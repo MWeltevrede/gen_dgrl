@@ -373,3 +373,23 @@ class BCQResnetBaseEncoder(NNBase):
         i = F.relu(self.i1(c.reshape(-1, 2048)))
         i = self.i2(i)
         return self.q2(q), F.log_softmax(i, dim=1), i
+
+
+AGENT_CLASSES = {
+    "dqn": DQNEncoder,
+    "bcq": BCQEncoder,
+    "pporesnetbase": PPOResNetBaseEncoder,
+    "pporesnet20": PPOResNet20Encoder,
+    "bcqresnetbase": BCQResnetBaseEncoder,
+}
+
+class EnsembleModel(nn.Module):
+    def __init__(self, model_name, n_ensemble_members, observation_space, action_space, hidden_size, use_actor_linear=True):
+        super().__init__()
+        self.models = [AGENT_CLASSES[model_name](observation_space, action_space=action_space, hidden_size=hidden_size, use_actor_linear=use_actor_linear) for _ in range(n_ensemble_members)]
+        self.N = n_ensemble_members
+
+    def forward(self, inputs):
+        x = inputs
+        x = [m(x) for m in self.models]
+        return x
