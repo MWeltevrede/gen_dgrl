@@ -40,12 +40,12 @@ if args.xpid is None:
 # Setup wandb and offline logging
 with open("wandb_info.txt") as file:
     lines = [line.rstrip() for line in file]
-    os.environ["WANDB_BASE_URL"] = lines[0]
+    # os.environ["WANDB_BASE_URL"] = lines[0]
     os.environ["WANDB_API_KEY"] = lines[1]
     os.environ["WANDB_START_METHOD"] = "thread"
     wandb_group = args.xpid[:-2][:126]  # '-'.join(args.xpid.split('-')[:-2])[:120]
     wandb_project = "OfflineRLBenchmark"
-    wandb.init(project=wandb_project, entity=lines[2], config=args, name=args.xpid, group=wandb_group, tags=[args.algo,"final","seed_1","subop","8_june"])
+    wandb.init(project=wandb_project, entity=lines[2], config=args, name=args.xpid, group=wandb_group, tags=[args.algo, args.env_name])
 
 log_dir = os.path.expandvars(os.path.expanduser(os.path.join(args.save_path, args.env_name)))
 # check if final_model.pt already exists in the log_dir
