@@ -384,12 +384,24 @@ AGENT_CLASSES = {
 }
 
 class EnsembleModel(nn.Module):
-    def __init__(self, model_name, n_ensemble_members, observation_space, action_space, hidden_size, use_actor_linear=True):
+    def __init__(self, model_name, n_ensemble_members, observation_space, action_space, hidden_size, use_actor_linear=True, subtract_init=True):
         super().__init__()
         self.models = [AGENT_CLASSES[model_name](observation_space, action_space=action_space, hidden_size=hidden_size, use_actor_linear=use_actor_linear) for _ in range(n_ensemble_members)]
-        self.N = n_ensemble_members
+        self.subtract_init = subtract_init
+
+        if self.subtract_init:
+            self.init_models = [AGENT_CLASSES[model_name](observation_space, action_space=action_space, hidden_size=hidden_size, use_actor_linear=use_actor_linear) for _ in range(n_ensemble_members)]
+            for i,m in enumerate(self.init_models):
+                m.load_state_dict(self.models[i].state_dict())
+                for param in m.parameters():
+                    param.requires_grad = False
 
     def forward(self, inputs):
         x = inputs
-        x = [m(x) for m in self.models]
+
+        if self.subtract_init:
+            x_init = [m(x) for m in self.init_models]
+            x = [m(x) - x_init[i] for i,m in enumerate(self.models)]
+        else:
+            x = [m(x) for m in self.models]
         return x

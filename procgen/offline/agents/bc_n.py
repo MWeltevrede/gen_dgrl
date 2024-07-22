@@ -13,7 +13,7 @@ from online.behavior_policies.distributions import Categorical, FixedCategorical
 
 
 class BehavioralCloningEnsemble:
-    def __init__(self, observation_space, action_space, lr, agent_model, hidden_size=64, ensemble_size=1):
+    def __init__(self, observation_space, action_space, lr, agent_model, hidden_size=64, ensemble_size=1, subtract_init=True):
         """
         Initialize the agent.
 
@@ -27,8 +27,9 @@ class BehavioralCloningEnsemble:
         self.lr = lr
         self.hidden_size = hidden_size
         self.N = ensemble_size
+        self.subtract_init = subtract_init
 
-        self.model_base = AGENT_CLASSES["ensemble"](agent_model, ensemble_size, observation_space, action_space, hidden_size, use_actor_linear=False)
+        self.model_base = AGENT_CLASSES["ensemble"](agent_model, ensemble_size, observation_space, action_space, hidden_size, use_actor_linear=False, subtract_init=subtract_init)
         self.model_dist = [Categorical(hidden_size, self.action_space) for _ in range(self.N)]
         self.optimizer = torch.optim.Adam([p for m in self.model_base.models for p in m.parameters()] + [p for m in self.model_dist for p in m.parameters()], lr=self.lr)
         
@@ -45,6 +46,8 @@ class BehavioralCloningEnsemble:
     def set_device(self, device):
         [m.to(device) for m in self.model_base.models]
         [m.to(device) for m in self.model_dist]
+        if self.subtract_init:
+            [m.to(device) for m in self.model_base.init_models]
 
     def eval_step(self, observation, eps=0.0):
         """
@@ -106,6 +109,8 @@ class BehavioralCloningEnsemble:
             "total_steps": self.total_steps,
             "curr_epochs": num_epochs
         }
+        if self.subtract_init:
+            save_dict["init_model_base_state_dict"]= [m.state_dict() for m in self.model_base.init_models]
         torch.save(save_dict, path)
         return
 
@@ -117,6 +122,8 @@ class BehavioralCloningEnsemble:
         """
         checkpoint = torch.load(path)
         [m.load_state_dict(checkpoint["model_base_state_dict"][i]) for i,m in enumerate(self.model_base.models)]
+        if self.subtract_init:
+            [m.load_state_dict(checkpoint["init_model_base_state_dict"][i]) for i,m in enumerate(self.model_base.init_models)]
         [m.load_state_dict(checkpoint["model_dist_state_dict"][i]) for i,m in enumerate(self.model_dist)]
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         self.total_steps = checkpoint["total_steps"]

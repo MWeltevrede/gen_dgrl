@@ -148,7 +148,7 @@ def xpid_from_params(p, prefix="", algo="", is_single=False):
             + f"-v{p['value_loss_coef']}-ha{p['entropy_coef']}"
         )
     elif algo == "bc_n":
-        algo_prefix = f"{algo}-lr{p['lr']}-n{p['ensemble_size']}"
+        algo_prefix = f"{algo}-lr{p['lr']}-n{p['ensemble_size']}-sinit{p['subtract_init']}"
     else:
         algo_prefix = f"{algo}-lr{p['lr']}"
         

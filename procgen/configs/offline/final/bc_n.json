@@ -24,6 +24,9 @@
         "ensemble_size": [
             10
         ],
+        "subtract_init": [
+            true
+        ],
         "hidden_size": [
             256
         ],
