@@ -7,6 +7,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.func import functional_call
 import numpy as np
 from utils import AGENT_CLASSES
 from online.behavior_policies.distributions import Categorical, FixedCategorical
@@ -31,7 +32,7 @@ class BehavioralCloningEnsemble:
 
         self.model_base = AGENT_CLASSES["ensemble"](agent_model, ensemble_size, observation_space, action_space, hidden_size, use_actor_linear=False, subtract_init=subtract_init)
         self.model_dist = [Categorical(hidden_size, self.action_space) for _ in range(self.N)]
-        self.optimizer = torch.optim.Adam([p for m in self.model_base.models for p in m.parameters()] + [p for m in self.model_dist for p in m.parameters()], lr=self.lr)
+        self.optimizer = torch.optim.Adam(self.model_base.params.values() + [p for m in self.model_dist for p in m.parameters()], lr=self.lr)
         
         self.total_steps = 0
 
@@ -58,7 +59,10 @@ class BehavioralCloningEnsemble:
         """
         deterministic = eps == 0.0
         with torch.no_grad():
-            actor_features = self.model_base(observation)
+            def fmodel(params, buffers, x):
+                return functional_call(self.model_base.base_model, (params, buffers), x)
+            
+            actor_features = torch.vmap(fmodel, in_dims=(0,0,None))(self.model_base.params, self.model_base.buffers, observation) 
             dists = [m(actor_features[i]) for i, m in enumerate(self.model_dist)]
             
             # take the mean over the logits
@@ -82,8 +86,11 @@ class BehavioralCloningEnsemble:
         # squeeze actions to [batch_size] if they are [batch_size, 1]
         if len(actions.shape) == 2:
             actions = actions.squeeze(dim=1)
+
+        def fmodel(params, buffers, x):
+            return functional_call(self.model_base.base_model, (params, buffers), x)
             
-        actor_features = self.model_base(observations)
+        actor_features = torch.vmap(fmodel, in_dims=(0,0,None))(self.model_base.params, self.model_base.buffers, observations)
         dists = [m(actor_features[i]) for i, m in enumerate(self.model_dist)]
         action_log_probs = torch.cat([d._get_log_softmax() for d in dists], dim=0)
         
@@ -103,7 +110,9 @@ class BehavioralCloningEnsemble:
         :param path: the path to save the model
         """
         save_dict = {
-            "model_base_state_dict": [m.state_dict() for m in self.model_base.models],
+            "model_base_params": self.model_base.params,
+            "model_base_buffers": self.model_base.buffers,
+            "model_base_base_model": self.model_base.base_model,
             "model_dist_state_dict": [m.state_dict() for m in self.model_dist],
             "optimizer_state_dict": self.optimizer.state_dict(),
             "total_steps": self.total_steps,
@@ -121,7 +130,9 @@ class BehavioralCloningEnsemble:
         :param path: the path to load the model
         """
         checkpoint = torch.load(path)
-        [m.load_state_dict(checkpoint["model_base_state_dict"][i]) for i,m in enumerate(self.model_base.models)]
+        self.model_base.params = checkpoint["model_base_params"]
+        self.model_base.buffers = checkpoint["model_base_buffers"]
+        self.model_base.base_model = checkpoint["model_base_base_model"]
         if self.subtract_init:
             [m.load_state_dict(checkpoint["init_model_base_state_dict"][i]) for i,m in enumerate(self.model_base.init_models)]
         [m.load_state_dict(checkpoint["model_dist_state_dict"][i]) for i,m in enumerate(self.model_dist)]

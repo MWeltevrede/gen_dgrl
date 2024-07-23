@@ -14,6 +14,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.func import stack_module_state
+from copy import deepcopy
 
 from utils.utils import init
 
@@ -389,12 +391,18 @@ class EnsembleModel(nn.Module):
         self.models = [AGENT_CLASSES[model_name](observation_space, action_space=action_space, hidden_size=hidden_size, use_actor_linear=use_actor_linear) for _ in range(n_ensemble_members)]
         self.subtract_init = subtract_init
 
+        self.base_model = deepcopy(self.models[0])
+        self.base_model = self.base_model.to('meta')
+        self.params, self.buffers = stack_module_state(self.models)
+
         if self.subtract_init:
             self.init_models = [AGENT_CLASSES[model_name](observation_space, action_space=action_space, hidden_size=hidden_size, use_actor_linear=use_actor_linear) for _ in range(n_ensemble_members)]
             for i,m in enumerate(self.init_models):
                 m.load_state_dict(self.models[i].state_dict())
                 for param in m.parameters():
                     param.requires_grad = False
+
+    
 
     def forward(self, inputs):
         x = inputs
