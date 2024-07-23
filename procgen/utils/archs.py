@@ -388,12 +388,12 @@ AGENT_CLASSES = {
 class EnsembleModel(nn.Module):
     def __init__(self, model_name, n_ensemble_members, observation_space, action_space, hidden_size, use_actor_linear=True, subtract_init=True):
         super().__init__()
-        self.models = [AGENT_CLASSES[model_name](observation_space, action_space=action_space, hidden_size=hidden_size, use_actor_linear=use_actor_linear) for _ in range(n_ensemble_members)]
+        self.models = nn.ModuleList([AGENT_CLASSES[model_name](observation_space, action_space=action_space, hidden_size=hidden_size, use_actor_linear=use_actor_linear) for _ in range(n_ensemble_members)])
         self.subtract_init = subtract_init
 
         self.base_model = deepcopy(self.models[0])
         self.base_model = self.base_model.to('meta')
-        self.params, self.buffers = stack_module_state(self.models)
+        self.params, self.vec_buffers = stack_module_state(self.models)
 
         if self.subtract_init:
             self.init_models = [AGENT_CLASSES[model_name](observation_space, action_space=action_space, hidden_size=hidden_size, use_actor_linear=use_actor_linear) for _ in range(n_ensemble_members)]
