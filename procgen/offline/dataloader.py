@@ -23,7 +23,7 @@ def load_episode(path) -> Dict[str, np.ndarray]:
         episode = np.load(f, allow_pickle=True).item()
         episode = {k: episode[k] for k in episode.keys()}
         episode['observations'] = episode['observations'].astype(np.uint8)
-        episode['rewards'] = episode['rewards'].astype(np.float)
+        episode['rewards'] = episode['rewards'].astype(float)
         return episode
 
 
