@@ -32,7 +32,7 @@ class BehavioralCloningEnsemble:
 
         self.model_base = AGENT_CLASSES["ensemble"](agent_model, ensemble_size, observation_space, action_space, hidden_size, use_actor_linear=False, subtract_init=subtract_init)
         self.model_dist = [Categorical(hidden_size, self.action_space) for _ in range(self.N)]
-        self.optimizer = torch.optim.Adam(list(self.model_base.params.values()) + [p for m in self.model_dist for p in m.parameters()], lr=self.lr)
+        self.optimizer = torch.optim.Adam([{'params': self.model_base.params.values()},  {'params': [p for m in self.model_dist for p in m.parameters()]}], lr=self.lr)
         
         self.total_steps = 0
 

@@ -36,7 +36,7 @@ parser.add_argument("--ckpt_freq", type=int, default=10, help="frequency for che
 
 # BC_N
 parser.add_argument("--ensemble_size", type=int, default=1, help="size of the ensemble of BC agents")
-parser.add_argument("--subtract_init", type=bool, default=False, help="whether to subtract a copy of the network at initialisation")
+parser.add_argument("--subtract_init", type=str2bool, default=False, help="whether to subtract a copy of the network at initialisation")
 
 # DDQN
 parser.add_argument("--target_update_freq", type=int, default=1000, help="frequency for target network update")
