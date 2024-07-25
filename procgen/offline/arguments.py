@@ -70,3 +70,7 @@ parser.add_argument("--threshold_metric", type=str, default="median", choices=["
 # Multiple Agent Training
 parser.add_argument("--agent_ids", nargs='+', type=int, default=0, help="provide IDs for the agents to be trained")
 parser.add_argument("--seeds", nargs='+', type=int, default=88, help="Provide the seeds for the agents to be trained")
+
+# Ensemble Evaluation
+parser.add_argument("--ensemble_size", type=int, default=1, help="The size of the ensemble to evaluate")
+parser.add_argument("--start_id", type=int, default=0, help="The agents from this ID + ensemble_size will be ensembled")
