@@ -66,7 +66,7 @@ for i, id in enumerate(args.agent_ids):
     # os.environ["WANDB_BASE_URL"] = lines[0]
     os.environ["WANDB_API_KEY"] = lines[1]
     os.environ["WANDB_START_METHOD"] = "thread"
-    wandb_group = xpid[:-2][:126]  # '-'.join(xpid.split('-')[:-2])[:120]
+    wandb_group = base_xpid  # '-'.join(xpid.split('-')[:-2])[:120]
     wandb_project = "OfflineRLBenchmark"
     with wandb.init(project=wandb_project, entity=lines[2], config=args, name=xpid, group=wandb_group, tags=[args.algo, args.env_name]):
 
@@ -237,17 +237,17 @@ for i, id in enumerate(args.agent_ids):
                         }
                     )
                     log_stats(stats_dict)
-
-                    # Save agent and number of epochs
-                    if args.resume and (epoch+1) % args.ckpt_freq == 0:
-                        curr_epochs = epoch + 1
-                        agent.save(num_epochs=curr_epochs, path=os.path.join(args.save_path, args.env_name, xpid, "model.pt"))
-                        agent.save(num_epochs=curr_epochs, path=os.path.join(args.save_path, args.env_name, xpid, f"model_{epoch}.pt"))
                         
                 if args.early_stop:
                     if early_stopper.should_stop(epoch, val_mean_perf):
                         print("[DEBUG]: Early stopping")             
                         break
+
+            # Save agent and number of epochs
+            if args.resume and (epoch+1) % args.ckpt_freq == 0:
+                curr_epochs = epoch + 1
+                agent.save(num_epochs=curr_epochs, path=os.path.join(args.save_path, args.env_name, xpid, "model.pt"))
+                agent.save(num_epochs=curr_epochs, path=os.path.join(args.save_path, args.env_name, xpid, f"model_{epoch}.pt"))
 
         if args.algo in ["dt", "bct"]:
             test_mean_perf = eval_DT_agent(agent, eval_max_return, device, env_name=args.env_name, start_level=args.num_levels+50, distribution_mode=args.distribution_mode)
