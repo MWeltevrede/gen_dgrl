@@ -273,3 +273,6 @@ for i, id in enumerate(args.agent_ids):
             })
         if args.resume:
             agent.save(num_epochs=args.epochs, path=os.path.join(args.save_path, args.env_name, xpid, "final_model.pt"))
+
+    filewriter.close()
+        
