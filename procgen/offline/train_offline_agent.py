@@ -9,7 +9,6 @@ import logging
 import os
 import time
 
-import procgen
 import torch
 import torch.nn as nn
 from baselines.common.vec_env import VecExtractDictObs
@@ -23,6 +22,17 @@ from offline.test_offline_agent import eval_agent, eval_DT_agent
 from utils.filewriter import FileWriter
 from utils.utils import set_seed
 from utils.early_stopper import EarlyStop
+
+from gym.envs.registration import register
+import gym
+register(
+     id="IllustrativeCMDPContinuous-v0",
+     entry_point="illustrative_env:IllustrativeCMDPContinuous",
+)
+register(
+     id="IllustrativeCMDPDiscrete-v0",
+     entry_point="illustrative_env:IllustrativeCMDPDiscrete",
+)
 
 args = parser.parse_args()
 print(args)
@@ -82,9 +92,19 @@ dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, pin_m
 
 print("Dataset Loaded!")
 
-# create Procgen env
-env = procgen.ProcgenEnv(num_envs=1, env_name=args.env_name)
-env = VecExtractDictObs(env, "rgb")
+# create Illustrative env
+train_tasks = [((255,0,128), 'left'), ((255,0,128), 'right'), ((255,0,128), 'top'),
+                ((128,255,0), 'left'), ((128,255,0), 'right'), ((128,255,0), 'top'),
+                ((0,128,255), 'left'), ((0,128,255), 'right'), ((0,128,255), 'top')]
+
+test_tasks = [((0,255,128), 'left'), ((0,255,128), 'right'), ((0,255,128), 'top'),
+                ((255,128,0), 'left'), ((255,128,0), 'right'), ((255,128,0), 'top'),
+                ((128,0,255), 'left'), ((128,0,255), 'right'), ((128,0,255), 'top')]
+
+if args.algo == "bc_cont":
+    env = gym.make('IllustrativeCMDPContinuous-v0', tasks=train_tasks)
+else:
+    env = gym.make('IllustrativeCMDPDiscrete-v0', tasks=train_tasks)
 
 curr_epochs = 0
 last_logged_update_count_at_restart = -1
@@ -121,100 +141,48 @@ for epoch in range(curr_epochs, args.epochs):
     agent.train()
     epoch_loss = 0
     epoch_start_time = time.time()
-    if args.algo in ["dt", "bct"]:
-        for observations, actions, rtgs, timesteps, padding_mask in dataloader:
-            observations, actions, rtgs, timesteps, padding_mask = (
-                observations.to(device),
-                actions.to(device),
-                rtgs.to(device),
-                timesteps.to(device),
-                padding_mask.to(device)
-            )
-            stats_dict = agent.train_step(observations.float(), actions.long(), rtgs.float(), timesteps.long(), padding_mask.float())
-            epoch_loss += stats_dict["loss"]
-    else:
-        for observations, actions, rewards, next_observations, dones in dataloader:
-            if len(actions.shape) == 1:
-                actions = actions.unsqueeze(dim=1)
-            if len(rewards.shape) == 1:
-                rewards = rewards.unsqueeze(dim=1)
-            if len(dones.shape) == 1:
-                dones = dones.unsqueeze(dim=1)
-            observations, actions, rewards, next_observations, dones = (
-                observations.to(device),
-                actions.to(device),
-                rewards.to(device),
-                next_observations.to(device),
-                dones.to(device),
-            )
-            stats_dict = agent.train_step(
-                observations.float(), actions.long(), rewards.float(), next_observations.float(), dones.float()
-            )
-            epoch_loss += stats_dict["loss"]
+    for observations, actions, rewards, next_observations, dones in dataloader:
+        if len(actions.shape) == 1:
+            actions = actions.unsqueeze(dim=1)
+        if len(rewards.shape) == 1:
+            rewards = rewards.unsqueeze(dim=1)
+        if len(dones.shape) == 1:
+            dones = dones.unsqueeze(dim=1)
+        observations, actions, rewards, next_observations, dones = (
+            observations.to(device),
+            actions.to(device),
+            rewards.to(device),
+            next_observations.to(device),
+            dones.to(device),
+        )
+        stats_dict = agent.train_step(
+            observations.float(), actions.long(), rewards.float(), next_observations.float(), dones.float()
+        )
+        epoch_loss += stats_dict["loss"]
     epoch_end_time = time.time()
 
-    # evaluate the agent on procgen environment
+    # evaluate the agent on illustrative environment
     if epoch % args.eval_freq == 0:
         inf_start_time = time.time()
-        if args.algo in ["dt", "bct"]:
-            test_mean_perf = eval_DT_agent(
-                agent,
-                eval_max_return,
-                device,
-                env_name=args.env_name,
-                start_level=args.num_levels+50,
-                distribution_mode=args.distribution_mode
-            )
-            val_mean_perf = eval_DT_agent(
-                agent,
-                eval_max_return,
-                device,
-                env_name=args.env_name,
-                num_levels=50,
-                start_level=args.num_levels,
-                distribution_mode=args.distribution_mode
-            )
-            train_mean_perf = eval_DT_agent(
-                agent,
-                eval_max_return,
-                device,
-                env_name=args.env_name,
-                num_levels=args.num_levels,
-                start_level=0,
-                distribution_mode=args.distribution_mode
-            )
-        else:
-            test_mean_perf = eval_agent(
-                agent,
-                device,
-                env_name=args.env_name,
-                start_level=args.num_levels+50,
-                distribution_mode=args.distribution_mode,
-                eval_eps=args.eval_eps,
-            )
-            val_mean_perf = eval_agent(
-                agent,
-                device,
-                env_name=args.env_name,
-                num_levels=50,
-                start_level=args.num_levels,
-                distribution_mode=args.distribution_mode,
-                eval_eps=args.eval_eps,
-            )
-            train_mean_perf = eval_agent(
-                agent,
-                device,
-                env_name=args.env_name,
-                num_levels=args.num_levels,
-                start_level=0,
-                distribution_mode=args.distribution_mode,
-                eval_eps=args.eval_eps,
-            )
+        test_mean_perf = eval_agent(
+            agent,
+            device,
+            test_env=True,
+            discrete=(args.algo == "bc"),
+            eval_eps=args.eval_eps,
+        )
+        train_mean_perf = eval_agent(
+            agent,
+            device,
+            test_env=False,
+            discrete=(args.algo == "bc"),
+            eval_eps=args.eval_eps,
+        )
         inf_end_time = time.time()
 
         print(
             f"Epoch: {epoch + 1} | Loss: {epoch_loss / len(dataloader)} | Time: {epoch_end_time - epoch_start_time} \
-                | Train Returns (mean): {train_mean_perf} | Validation Returns (mean): {val_mean_perf} | Test Returns (mean): {test_mean_perf}"
+                | Train Returns (mean): {train_mean_perf} | Test Returns (mean): {test_mean_perf}"
         )
 
         print(epoch+1)
@@ -227,43 +195,23 @@ for epoch in range(curr_epochs, args.epochs):
                     "inf_time": inf_end_time - inf_start_time,
                     "train_rets_mean": train_mean_perf,
                     "test_rets_mean": test_mean_perf,
-                    "val_rets_mean": val_mean_perf,
                 }
             )
             log_stats(stats_dict)
 
-            # Save agent and number of epochs
-            if args.resume and (epoch+1) % args.ckpt_freq == 0:
-                curr_epochs = epoch + 1
-                agent.save(num_epochs=curr_epochs, path=os.path.join(args.save_path, args.env_name, args.xpid, "model.pt"))
-                agent.save(num_epochs=curr_epochs, path=os.path.join(args.save_path, args.env_name, args.xpid, f"model_{epoch}.pt"))
+    # Save agent and number of epochs
+    if args.resume and (epoch+1) % args.ckpt_freq == 0:
+        curr_epochs = epoch + 1
+        agent.save(num_epochs=curr_epochs, path=os.path.join(args.save_path, args.env_name, args.xpid, "model.pt"))
+        agent.save(num_epochs=curr_epochs, path=os.path.join(args.save_path, args.env_name, args.xpid, f"model_{epoch}.pt"))
                 
-        if args.early_stop:
-            if early_stopper.should_stop(epoch, val_mean_perf):
-                print("[DEBUG]: Early stopping")             
-                break
+test_mean_perf = eval_agent(agent, device, test_env=True, discrete=(args.algo == "bc"), eval_eps=args.eval_eps)
+train_mean_perf = eval_agent(agent, device, test_env=False, discrete=(args.algo == "bc"), eval_eps=args.eval_eps)
 
-if args.algo in ["dt", "bct"]:
-    test_mean_perf = eval_DT_agent(agent, eval_max_return, device, env_name=args.env_name, start_level=args.num_levels+50, distribution_mode=args.distribution_mode)
-    train_mean_perf = eval_DT_agent(
-        agent, eval_max_return, device, env_name=args.env_name, num_levels=args.num_levels, start_level=0, distribution_mode=args.distribution_mode
-    )
-    val_mean_perf = eval_DT_agent(
-        agent, eval_max_return, device, env_name=args.env_name, num_levels=50, start_level=args.num_levels, distribution_mode=args.distribution_mode
-    )
-else:
-    test_mean_perf = eval_agent(agent, device, env_name=args.env_name, start_level=args.num_levels+50, distribution_mode=args.distribution_mode, eval_eps=args.eval_eps)
-    train_mean_perf = eval_agent(
-        agent, device, env_name=args.env_name, num_levels=args.num_levels, start_level=0, distribution_mode=args.distribution_mode, eval_eps=args.eval_eps
-    )
-    val_mean_perf = eval_agent(
-        agent, device, env_name=args.env_name, num_levels=50, start_level=args.num_levels, distribution_mode=args.distribution_mode
-    )
-wandb.log({"final_test_ret": test_mean_perf, "final_train_ret": train_mean_perf, "final_val_ret": val_mean_perf}, step=(epoch + 1))
+wandb.log({"final_test_ret": test_mean_perf, "final_train_ret": train_mean_perf}, step=(epoch + 1))
 filewriter.log_final_test_eval({
         'final_test_ret': test_mean_perf,
         'final_train_ret': train_mean_perf,
-        'final_val_ret': val_mean_perf
     })
 if args.resume:
     agent.save(num_epochs=args.epochs, path=os.path.join(args.save_path, args.env_name, args.xpid, "final_model.pt"))

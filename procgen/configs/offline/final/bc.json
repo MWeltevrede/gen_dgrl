@@ -4,28 +4,28 @@
             "bc"
         ],
         "env_name": [
-            "bigfish", "bossfight", "caveflyer", "chaser", "climber", "coinrun", "dodgeball", "fruitbot", "heist", "jumper", "leaper", "ninja", "maze", "miner", "plunder", "starpilot"
+            "illustrative"
         ],
         "dataset": [
-            "your_final_dataset_path"
+            "datasets"
         ],
         "lr": [
             5e-4
         ],
         "batch_size": [
-            256
+            5
         ],
         "epochs": [
-            100
+            1000
         ],
         "agent_model": [
-            "pporesnetbase"
+            "illustrative"
         ],
         "hidden_size": [
-            256
+            64
         ],
         "save_path": [
-            "your_final_checkpoint_path"
+            "models/"
         ],
         "num_levels": [
             200
@@ -37,13 +37,13 @@
             1.0
         ],
         "eval_freq":[
-            1
-        ],
-        "ckpt_freq":[
             10
         ],
+        "ckpt_freq":[
+            100
+        ],
         "early_stop": [
-            true
+            false
         ]
     }
 }

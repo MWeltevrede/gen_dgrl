@@ -4,7 +4,7 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-from .archs import DQNEncoder, BCQEncoder, PPOResNetBaseEncoder, PPOResNet20Encoder, BCQResnetBaseEncoder
+from .archs import DQNEncoder, BCQEncoder, PPOResNetBaseEncoder, PPOResNet20Encoder, BCQResnetBaseEncoder, IllustrativeEncoder
 
 AGENT_CLASSES = {
     "dqn": DQNEncoder,
@@ -12,4 +12,5 @@ AGENT_CLASSES = {
     "pporesnetbase": PPOResNetBaseEncoder,
     "pporesnet20": PPOResNet20Encoder,
     "bcqresnetbase": BCQResnetBaseEncoder,
+    "illustrative": IllustrativeEncoder,
 }

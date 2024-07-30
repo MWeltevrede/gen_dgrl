@@ -9,27 +9,32 @@ import torch
 import torch.nn as nn
 from baselines.common.vec_env import VecExtractDictObs
 
+import gym
+
+
 
 def eval_agent(
     agent: nn.Module,
     device,
-    env_name="miner",
-    num_levels=0,
-    start_level=0,
-    distribution_mode="easy",
+    test_env=False,
+    discrete=False,
     eval_eps=0.001,
-    num_episodes=10,
+    num_episodes=18,
 ):
-    # Sample Levels From the Full Distribution
-    env = procgen.ProcgenEnv(
-        num_envs=1,
-        env_name=env_name,
-        num_levels=num_levels,
-        start_level=start_level,
-        distribution_mode=distribution_mode,
-    )
-    env = VecExtractDictObs(env, "rgb")
+    if test_env:
+        tasks = [((0,255,128), 'left'), ((0,255,128), 'right'), ((0,255,128), 'top'),
+                    ((255,128,0), 'left'), ((255,128,0), 'right'), ((255,128,0), 'top'),
+                    ((128,0,255), 'left'), ((128,0,255), 'right'), ((128,0,255), 'top')]
+    else:
+        tasks = [((255,0,128), 'left'), ((255,0,128), 'right'), ((255,0,128), 'top'),
+            ((128,255,0), 'left'), ((128,255,0), 'right'), ((128,255,0), 'top'),
+            ((0,128,255), 'left'), ((0,128,255), 'right'), ((0,128,255), 'top')]
 
+    if discrete:
+        env = gym.make('IllustrativeCMDPDiscrete-v0', tasks=tasks)  
+    else:
+        env = gym.make('IllustrativeCMDPContinuous-v0', tasks=tasks)   
+    
     eval_episode_rewards = []
     agent.eval()
     for _ in range(num_episodes):

@@ -4,7 +4,7 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-from offline.agents.bc import BehavioralCloning
+from offline.agents.bc import BehavioralCloning, BehavioralCloningContinuous
 from offline.agents.bcq import BCQ
 from offline.agents.ddqn_cql import CQL
 from offline.agents.iql import IQL
@@ -12,6 +12,8 @@ from offline.agents.dt import DecisionTransformer
 
 def _create_agent(args, env, extra_config):
     agent_name = args.algo
+    if agent_name == "bc_cont":
+        return BehavioralCloningContinuous(env.observation_space, env.action_space, args.lr, args.agent_model, args.hidden_size)
     if agent_name == "bc":
         return BehavioralCloning(env.observation_space, env.action_space.n, args.lr, args.agent_model, args.hidden_size)
     if agent_name == "bcq":

@@ -15,6 +15,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import numpy as np
+
 from utils.utils import init
 
 init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.constant_(x, 0))
@@ -373,3 +375,24 @@ class BCQResnetBaseEncoder(NNBase):
         i = F.relu(self.i1(c.reshape(-1, 2048)))
         i = self.i2(i)
         return self.q2(q), F.log_softmax(i, dim=1), i
+
+
+class IllustrativeEncoder(NNBase):
+    def __init__(self, observation_space, action_space, hidden_size=64, channels=[64], use_actor_linear=True):
+        super().__init__(hidden_size)
+        flattened_dim = np.prod(observation_space.shape)
+
+        self.linears = []
+        self.linears.append(Flatten())
+        self.linears.append(nn.Linear(flattened_dim, channels[0]))
+        self.linears.append(nn.ReLU())
+        for i in range(len(channels) - 1):
+            self.linears.append(nn.Linear(channels[i], channels[i + 1]))
+            self.linears.append(nn.ReLU())
+        self.linears.append(nn.Linear(channels[-1], hidden_size))
+        self.linears.append(nn.ReLU())
+        self.linears.append(nn.Linear(hidden_size, action_space))
+        self.linears = nn.Sequential(*self.linears)
+
+    def forward(self, x):
+        return self.linears(x)
