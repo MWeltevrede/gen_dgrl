@@ -21,32 +21,33 @@ TIMEOUT_STEPS = 20
 class IllustrativeCMDPDiscrete(gym.Env):
     metadata = {"render_modes": ["rgb_array"], "render_fps": 4}
 
-    def __init__(self, arm_length=1, tasks=[((255,0,128), 'left'), ((255,0,128), 'right'), ((255,0,128), 'top'),
-                                            ((128,255,0), 'left'), ((128,255,0), 'right'), ((128,255,0), 'top'),
-                                            ((0,128,255), 'left'), ((0,128,255), 'right'), ((0,128,255), 'top')]):
-        self.observation_space = spaces.Box(0,1, shape=(3,(2*arm_length + 1),(arm_length + 1)), dtype=float)
-        self.size = np.array([2*arm_length + 1, arm_length + 1], dtype=np.uint8)
+    def __init__(self, arm_length=1, tasks=[((255,0,128), 'left'), ((255,0,128), 'right'), ((255,0,128), 'top'), ((255,0,128), 'bottom'),
+                                            ((0,255,128), 'left'), ((0,255,128), 'right'), ((0,255,128), 'top'), ((0,255,128), 'bottom')]):
+        self.observation_space = spaces.Box(0,1, shape=(3,(2*arm_length + 1),(2*arm_length + 1)), dtype=float)
+        self.size = np.array([2*arm_length + 1, 2*arm_length + 1], dtype=np.uint8)
         self.arm_length = arm_length
 
         # We have 4 actions, corresponding to "right", "up", "left", "down"
         self.action_space = spaces.Discrete(4)
 
+        self.tasks = tasks
+        self._current_task_id = 0
+        self.num_tasks = len(tasks)
+        self._target_location = np.array([self.arm_length,self.arm_length])
+
+    def _action_map(self, action):
         """
         The following dictionary maps abstract actions from `self.action_space` to
         the direction we will walk in if that action is taken.
         I.e. 0 corresponds to "right", 1 to "up" etc.
         """
-        self._action_to_direction = {
+        _action_to_direction = {
             0: np.array([1, 0]),    # right
             1: np.array([0, 1]),    # down
             2: np.array([-1, 0]),   # left
             3: np.array([0, -1]),   # up
         }
-
-        self.tasks = tasks
-        self._current_task_id = 0
-        self.num_tasks = len(tasks)
-        self._target_location = np.array([self.arm_length,self.arm_length])
+        return _action_to_direction[action]
 
     def seed(self, seed):
         super().seed(seed)
@@ -60,33 +61,33 @@ class IllustrativeCMDPDiscrete(gym.Env):
     def _get_obs(self):
         obs = np.tile(self._current_background_color, (self.size[0], self.size[1], 1)).transpose(2,0,1)
 
-        # # Turn arms white (too easy)
-        # obs[:, :, self.arm_length] = np.tile(np.array([255,255,255]), (self.size, 1)).transpose(1,0)
-        # obs[:, self.arm_length, :] = np.tile(np.array([255,255,255]), (self.size, 1)).transpose(1,0)
+        # # Turn arms black (too easy)
+        # obs[:, :, self.arm_length] = np.tile(np.array([0,0,0]), (self.size[0], 1)).transpose(1,0)
+        # obs[:, self.arm_length, :] = np.tile(np.array([0,0,0]), (self.size[0], 1)).transpose(1,0)
 
         # set agent as a dark red square
         # agent_color = np.array([0,0,0], dtype=np.float64)
         # i = np.random.randint(0,3)
         # agent_color[i] = 1
-        obs[:, self._agent_location[0], self._agent_location[1]] = np.array([255,255,255]) / 255.
+        obs[:, self._agent_location[0], self._agent_location[1]] = np.array([255,255,255])
         # obs[:, self._agent_location[0], self._agent_location[1]] = agent_color
 
-        # set goal as dark green square
-        obs[:, self._target_location[0], self._target_location[1]] = np.array([0,0,0]) / 255.
+        # set goal as black green square
+        obs[:, self._target_location[0], self._target_location[1]] = np.array([0,0,0])
 
         return obs
 
     def reset(self):
         self._current_task_id = (self._current_task_id + 1) % self.num_tasks
-        self._current_background_color = np.array(self.tasks[self._current_task_id][0]) / 255.
+        self._current_background_color = np.array(self.tasks[self._current_task_id][0])
         if self.tasks[self._current_task_id][1] == 'right':
             self._agent_location = np.array([self.size[0]-1, self.arm_length])
         if self.tasks[self._current_task_id][1] == 'left':
             self._agent_location = np.array([0, self.arm_length])
         if self.tasks[self._current_task_id][1] == 'top':
             self._agent_location = np.array([self.arm_length, 0])
-        # if self.tasks[self._current_task_id][1] == 'bottom':
-        #     self._agent_location = np.array([self.arm_length, self.size-1])
+        if self.tasks[self._current_task_id][1] == 'bottom':
+            self._agent_location = np.array([self.arm_length, self.size[1]-1])
 
         observation = self._get_obs()
 
@@ -102,24 +103,24 @@ class IllustrativeCMDPDiscrete(gym.Env):
                 if self._agent_location[0] == 0 or self._agent_location[0] == self.size[0]-1:
                     # move to top arm
                     self._agent_location = np.array([self.arm_length, 0])
-            # elif action == 1:
-            #     if self._agent_location[0] == 0 or self._agent_location[0] == self.size[0]-1:
-            #         # move to bottom arm
-            #         self._agent_location = np.array([self.arm_length, self.size-1])
+            elif action == 1:
+                if self._agent_location[0] == 0 or self._agent_location[0] == self.size[0]-1:
+                    # move to bottom arm
+                    self._agent_location = np.array([self.arm_length, self.size[1]-1])
             else:
-                self._agent_location = np.clip(self._agent_location + self._action_to_direction[action], 0, self.size-1)
+                self._agent_location = np.clip(self._agent_location + self._action_map(action), 0, self.size-1)
         elif self._agent_location[0] == self.arm_length:
             # we are in the top or bottom arm
             if action == 0:
-                if self._agent_location[1] == 0:
+                if self._agent_location[1] == 0 or self._agent_location[1] == self.size[1]-1:
                     # move to right arm
                     self._agent_location = np.array([self.size[0]-1, self.arm_length])
             elif action == 2:
-                if self._agent_location[1] == 0:
+                if self._agent_location[1] == 0 or self._agent_location[1] == self.size[1]-1:
                     # move to left arm
                     self._agent_location = np.array([0, self.arm_length])
             else:
-                self._agent_location = np.clip(self._agent_location + self._action_to_direction[action], 0, self.size-1)
+                self._agent_location = np.clip(self._agent_location + self._action_map(action), 0, self.size-1)
 
     def get_agent_location(self):
         return self._agent_location
@@ -149,9 +150,8 @@ class IllustrativeCMDPDiscrete(gym.Env):
     
 
 class IllustrativeCMDPContinuous(IllustrativeCMDPDiscrete):
-    def __init__(self, arm_length=1, tasks=[((255,0,128), 'left'), ((255,0,128), 'right'), ((255,0,128), 'top'),
-                                            ((128,255,0), 'left'), ((128,255,0), 'right'), ((128,255,0), 'top'),
-                                            ((0,128,255), 'left'), ((0,128,255), 'right'), ((0,128,255), 'top')]):
+    def __init__(self, arm_length=1, tasks=[((255,0,128), 'left'), ((255,0,128), 'right'), ((255,0,128), 'top'), ((255,0,128), 'bottom'),
+                                            ((0,255,128), 'left'), ((0,255,128), 'right'), ((0,255,128), 'top'), ((0,255,128), 'bottom')]):
         super().__init__(arm_length=arm_length, tasks=tasks)
 
         # We have 4 actions, corresponding to "right", "up", "left", "down"
@@ -172,26 +172,3 @@ class IllustrativeCMDPContinuous(IllustrativeCMDPDiscrete):
             3: np.array([0, -1]),   # up
         }
         return _action_to_direction.get(np.round(action), np.array([0, 0]))
-    
-    def _move_agent(self, action):
-        action = action.item()
-        if self._agent_location[1] == self.arm_length:
-            # we are in the right or left arm
-            if action == 3:
-                if self._agent_location[0] == 0 or self._agent_location[0] == self.size[0]-1:
-                    # move to top arm
-                    self._agent_location = np.array([self.arm_length, 0])
-            else:
-                self._agent_location = np.clip(self._agent_location + self._action_map(action), 0, self.size-1)
-        elif self._agent_location[0] == self.arm_length:
-            # we are in the top or bottom arm
-            if action == 0:
-                if self._agent_location[1] == 0:
-                    # move to right arm
-                    self._agent_location = np.array([self.size[0]-1, self.arm_length])
-            elif action == 2:
-                if self._agent_location[1] == 0:
-                    # move to left arm
-                    self._agent_location = np.array([0, self.arm_length])
-            else:
-                self._agent_location = np.clip(self._agent_location + self._action_map(action), 0, self.size-1)
