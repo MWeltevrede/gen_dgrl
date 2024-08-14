@@ -5,6 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 from offline.agents.bc import BehavioralCloning, BehavioralCloningContinuous
+from offline.agents.bc_n import BehavioralCloningEnsemble, BehavioralCloningEnsembleContinuous
 from offline.agents.bcq import BCQ
 from offline.agents.ddqn_cql import CQL
 from offline.agents.iql import IQL
@@ -16,6 +17,10 @@ def _create_agent(args, env, extra_config):
         return BehavioralCloningContinuous(env.observation_space, env.action_space, args.lr, args.agent_model, args.hidden_size)
     if agent_name == "bc":
         return BehavioralCloning(env.observation_space, env.action_space.n, args.lr, args.agent_model, args.hidden_size)
+    if agent_name == "bc_n_cont":
+        return BehavioralCloningEnsembleContinuous(env.observation_space, env.action_space, args.lr, args.agent_model, args.hidden_size, args.ensemble_size)
+    if agent_name == "bc_n":
+        return BehavioralCloningEnsemble(env.observation_space, env.action_space.n, args.lr, args.agent_model, args.hidden_size, args.ensemble_size)
     if agent_name == "bcq":
         assert args.agent_model in ["bcq", "bcqresnetbase"]
         return BCQ(env.observation_space, 
