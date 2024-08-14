@@ -1,0 +1,58 @@
+{
+    "grid": {
+        "algo": [
+            "bc_n"
+        ],
+        "env_name": [
+            "illustrative"
+        ],
+        "dataset": [
+            "datasets"
+        ],
+        "lr": [
+            5e-4
+        ],
+        "batch_size": [
+            6
+        ],
+        "dataset_size":[
+            48
+        ],
+        "epochs": [
+            500
+        ],
+        "agent_model": [
+            "illustrative_ensemble"
+        ],
+        "hidden_size": [
+            64
+        ],
+        "save_path": [
+            "models/"
+        ],
+        "num_levels": [
+            200
+        ],
+        "resume": [
+            false
+        ],
+        "percentile": [
+            1.0
+        ],
+        "eval_freq":[
+            10
+        ],
+        "eval_eps": [
+            0
+        ],
+        "ckpt_freq":[
+            100
+        ],
+        "early_stop": [
+            false
+        ],
+        "ensemble_size":[
+            1, 2, 5, 10, 100
+        ]
+    }
+}
