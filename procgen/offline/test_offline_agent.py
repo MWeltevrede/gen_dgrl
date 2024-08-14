@@ -16,34 +16,26 @@ import gym
 def eval_agent(
     agent: nn.Module,
     device,
-    test_env=False,
+    tasks,
     discrete=False,
     eval_eps=0.001,
     num_episodes=18,
+    env_kwargs={},
 ):
-    if test_env:
-        tasks = [((0,255,128), 'left'), ((0,255,128), 'right'), ((0,255,128), 'top'),
-                    ((255,128,0), 'left'), ((255,128,0), 'right'), ((255,128,0), 'top'),
-                    ((128,0,255), 'left'), ((128,0,255), 'right'), ((128,0,255), 'top')]
-    else:
-        tasks = [((255,0,128), 'left'), ((255,0,128), 'right'), ((255,0,128), 'top'),
-            ((128,255,0), 'left'), ((128,255,0), 'right'), ((128,255,0), 'top'),
-            ((0,128,255), 'left'), ((0,128,255), 'right'), ((0,128,255), 'top')]
-
     if discrete:
-        env = gym.make('IllustrativeCMDPDiscrete-v0', tasks=tasks)  
+        env = gym.make('IllustrativeCMDPDiscrete-v0', tasks=tasks, **env_kwargs)  
     else:
-        env = gym.make('IllustrativeCMDPContinuous-v0', tasks=tasks)   
+        env = gym.make('IllustrativeCMDPContinuous-v0', tasks=tasks, **env_kwargs)   
     
     eval_episode_rewards = []
+    eval_episode_len = []
     agent.eval()
     for _ in range(num_episodes):
         obs = env.reset()
         done = False
         episode_reward = 0
+        episode_len = 0
         while not done:
-            if obs.shape[1] != 3:
-                obs = obs.transpose(0, 3, 1, 2)
             obs = torch.from_numpy(obs).float().to(device)
             # normalize obs to [0, 1] if [0,255]
             # if obs.max() > 1.0:
@@ -53,10 +45,13 @@ def eval_agent(
             if action.shape == (1, 1):
                 action = action[0]
             obs, reward, done, _ = env.step(action)
+            episode_len += 1
             episode_reward += reward
         eval_episode_rewards.append(episode_reward)
+        eval_episode_len.append(episode_len)
     mean_eval_episode_reward = sum(eval_episode_rewards) / len(eval_episode_rewards)
-    return mean_eval_episode_reward
+    mean_eval_episode_len = sum(eval_episode_len) / len(eval_episode_len)
+    return mean_eval_episode_reward, mean_eval_episode_len
 
 
 def eval_DT_agent(

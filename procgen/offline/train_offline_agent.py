@@ -93,18 +93,31 @@ dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, pin_m
 print("Dataset Loaded!")
 
 # create Illustrative env
-train_tasks = [((255,0,128), 'left'), ((255,0,128), 'right'), ((255,0,128), 'top'),
-                ((128,255,0), 'left'), ((128,255,0), 'right'), ((128,255,0), 'top'),
-                ((0,128,255), 'left'), ((0,128,255), 'right'), ((0,128,255), 'top')]
+if args.env_name == "illustrative":
+    # Alternating subgroup
+    train_tasks = [((255,0,128), 'left'), ((255,0,128), 'right'), ((255,0,128), 'top'), ((255,0,128), 'bottom'),
+                ((0,255,128), 'left'), ((0,255,128), 'right'), ((0,255,128), 'top'), ((0,255,128), 'bottom')]
+    # Full group of permutations
+    test_tasks = [((128,255,0), 'left'), ((128,255,0), 'right'), ((128,255,0), 'top'), ((128,255,0), 'bottom'),
+                ((255,128,0), 'left'), ((255,128,0), 'right'), ((255,128,0), 'top'), ((255,128,0), 'bottom'),
+                ((128,0,255), 'left'), ((128,0,255), 'right'), ((128,0,255), 'top'), ((128,0,255), 'bottom'),
+                ((0,128,255), 'left'), ((0,128,255), 'right'), ((0,128,255), 'top'), ((0,128,255), 'bottom')]
+elif args.env_name == "illustrative_random":
+    # Random training colours
+    train_tasks = [((206,16,220), 'left'), ((206,16,220), 'right'), ((206,16,220), 'top'), ((206,16,220), 'bottom'),
+                ((86,185,105), 'left'), ((86,185,105), 'right'), ((86,185,105), 'top'), ((86,185,105), 'bottom')]
+    # Random testing colours
+    test_tasks = [((237,48,217), 'left'), ((237,48,217), 'right'), ((237,48,217), 'top'), ((237,48,217), 'bottom'),
+                ((52,128,100), 'left'), ((52,128,100), 'right'), ((52,128,100), 'top'), ((52,128,100), 'bottom'),
+                ((35,21,88), 'left'), ((35,21,88), 'right'), ((35,21,88), 'top'), ((35,21,88), 'bottom'),
+                ((213,109,113), 'left'), ((213,109,113), 'right'), ((213,109,113), 'top'), ((213,109,113), 'bottom')]
 
-test_tasks = [((0,255,128), 'left'), ((0,255,128), 'right'), ((0,255,128), 'top'),
-                ((255,128,0), 'left'), ((255,128,0), 'right'), ((255,128,0), 'top'),
-                ((128,0,255), 'left'), ((128,0,255), 'right'), ((128,0,255), 'top')]
+env_kwargs = {"arm_length": 6}
 
-if args.algo == "bc_cont":
-    env = gym.make('IllustrativeCMDPContinuous-v0', tasks=train_tasks)
+if "cont" in args.algo:
+    env = gym.make('IllustrativeCMDPContinuous-v0', tasks=train_tasks, **env_kwargs)
 else:
-    env = gym.make('IllustrativeCMDPDiscrete-v0', tasks=train_tasks)
+    env = gym.make('IllustrativeCMDPDiscrete-v0', tasks=train_tasks, **env_kwargs)
 
 curr_epochs = 0
 last_logged_update_count_at_restart = -1
@@ -164,19 +177,21 @@ for epoch in range(curr_epochs, args.epochs):
     # evaluate the agent on illustrative environment
     if epoch % args.eval_freq == 0:
         inf_start_time = time.time()
-        test_mean_perf = eval_agent(
+        test_mean_perf, test_mean_len = eval_agent(
             agent,
             device,
-            test_env=True,
+            test_tasks,
             discrete=(args.algo == "bc"),
             eval_eps=args.eval_eps,
+            env_kwargs=env_kwargs
         )
-        train_mean_perf = eval_agent(
+        train_mean_perf, train_mean_len = eval_agent(
             agent,
             device,
-            test_env=False,
+            train_tasks,
             discrete=(args.algo == "bc"),
             eval_eps=args.eval_eps,
+            env_kwargs=env_kwargs
         )
         inf_end_time = time.time()
 
@@ -194,7 +209,9 @@ for epoch in range(curr_epochs, args.epochs):
                     "epoch_time": epoch_end_time - epoch_start_time,
                     "inf_time": inf_end_time - inf_start_time,
                     "train_rets_mean": train_mean_perf,
+                    "train_len_mean": train_mean_len,
                     "test_rets_mean": test_mean_perf,
+                    "test_len_mean": test_mean_len
                 }
             )
             log_stats(stats_dict)
@@ -205,10 +222,10 @@ for epoch in range(curr_epochs, args.epochs):
         agent.save(num_epochs=curr_epochs, path=os.path.join(args.save_path, args.env_name, args.xpid, "model.pt"))
         agent.save(num_epochs=curr_epochs, path=os.path.join(args.save_path, args.env_name, args.xpid, f"model_{epoch}.pt"))
                 
-test_mean_perf = eval_agent(agent, device, test_env=True, discrete=(args.algo == "bc"), eval_eps=args.eval_eps)
-train_mean_perf = eval_agent(agent, device, test_env=False, discrete=(args.algo == "bc"), eval_eps=args.eval_eps)
+test_mean_perf, test_mean_len = eval_agent(agent, device, test_tasks, discrete=(args.algo == "bc"), eval_eps=args.eval_eps, env_kwargs=env_kwargs)
+train_mean_perf, train_mean_len = eval_agent(agent, device, train_tasks, discrete=(args.algo == "bc"), eval_eps=args.eval_eps, env_kwargs=env_kwargs)
 
-wandb.log({"final_test_ret": test_mean_perf, "final_train_ret": train_mean_perf}, step=(epoch + 1))
+wandb.log({"final_test_ret": test_mean_perf, "final_test_len": test_mean_len, "final_train_ret": train_mean_perf, "final_train_len": train_mean_len}, step=(epoch + 1))
 filewriter.log_final_test_eval({
         'final_test_ret': test_mean_perf,
         'final_train_ret': train_mean_perf,
