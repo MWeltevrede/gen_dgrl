@@ -8,7 +8,7 @@ import argparse
 from utils.utils import str2bool
 
 parser = argparse.ArgumentParser(description="Train offline agents")
-parser.add_argument("--algo", type=str, default="bc", choices=["bc", "bc_cont", "cql", "dt", "bct", "bcq", "offlinedqn", "iql", "xql"], help="Algorithm to train")
+parser.add_argument("--algo", type=str, default="bc", choices=["bc", "bc_cont", "bc_n", "bc_n_cont", "cql", "dt", "bct", "bcq", "offlinedqn", "iql", "xql"], help="Algorithm to train")
 parser.add_argument("--dataset", type=str, default="data/dataset.hdf5", help="Path to dataset")
 parser.add_argument("--percentile", type=float, default=1.0, help="percentile for top% training")
 parser.add_argument("--dataset_size", type=int, default=1000000, help="Size of dataset")
@@ -19,7 +19,7 @@ parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate")
 parser.add_argument("--batch_size", type=int, default=64, help="Batch size")
 parser.add_argument("--epochs", type=int, default=10, help="Number of epochs")
 parser.add_argument("--hidden_size", type=int, default=64, help="Size of hidden layers")
-parser.add_argument("--agent_model", type=str, default="dqn", choices=["dqn", "bcq", "pporesnetbase", "pporesnet20", "bcqresnetbase", "illustrative"], help="Agent model")
+parser.add_argument("--agent_model", type=str, default="dqn", choices=["dqn", "bcq", "pporesnetbase", "pporesnet20", "bcqresnetbase", "illustrative", "illustrative_ensemble"], help="Agent model")
 parser.add_argument("--save_path", type=str, default="data/bc.pt", help="Path to save model")
 parser.add_argument("--resume", type=str2bool, default=False, help="Resume training")
 parser.add_argument("--deterministic", type=str2bool, default=False, help="Sample actions deterministically")
@@ -66,3 +66,6 @@ parser.add_argument("--dt_eval_ret", type=int, default=0, help="evaluation retur
 # Single Level Training
 parser.add_argument("--capacity_type", type=str, default="transitions", choices=["transitions", "episodes"], help="capacity type")
 parser.add_argument("--threshold_metric", type=str, default="median", choices=["percentile", "median"], help="threshold metric")
+
+# BC-N
+parser.add_argument("--ensemble_size", type=int, default=1, help="size of the ensemble")

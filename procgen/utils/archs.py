@@ -16,6 +16,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 import numpy as np
+import math
 
 from utils.utils import init
 
@@ -378,9 +379,10 @@ class BCQResnetBaseEncoder(NNBase):
 
 
 class IllustrativeEncoder(NNBase):
-    def __init__(self, observation_space, action_space, hidden_size=64, channels=[64], use_actor_linear=True):
+    def __init__(self, observation_space, action_space, hidden_size=64, channels=[128, 64], use_actor_linear=True, normalize_obs=True):
         super().__init__(hidden_size)
         flattened_dim = np.prod(observation_space.shape)
+        self.normalize_obs = normalize_obs
 
         self.linears = []
         self.linears.append(Flatten())
@@ -395,4 +397,67 @@ class IllustrativeEncoder(NNBase):
         self.linears = nn.Sequential(*self.linears)
 
     def forward(self, x):
+        if self.normalize_obs:
+            x = x / 255.
         return self.linears(x)
+    
+class VectorizedLinear(nn.Module):
+    def __init__(self, in_features: int, out_features: int, ensemble_size: int):
+        super().__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.ensemble_size = ensemble_size
+
+        self.weight = nn.Parameter(torch.empty(ensemble_size, in_features, out_features))
+        self.bias = nn.Parameter(torch.empty(ensemble_size, 1, out_features))
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        # default pytorch init for nn.Linear module
+        for layer in range(self.ensemble_size):
+            nn.init.kaiming_uniform_(self.weight[layer], a=math.sqrt(5))
+
+        fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight[0])
+        bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
+        nn.init.uniform_(self.bias, -bound, bound)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # input: [ensemble_size, batch_size, input_size]
+        # weight: [ensemble_size, input_size, out_size]
+        # out: [ensemble_size, batch_size, out_size]
+        return x @ self.weight + self.bias
+    
+class IllustrativeEncoderEnsemble(NNBase):
+    def __init__(self, observation_space, action_space, hidden_size=64, channels=[128, 64], use_actor_linear=True, normalize_obs=True, ensemble_size=1):
+        super().__init__(hidden_size)
+        flattened_dim = np.prod(observation_space.shape)
+        self.normalize_obs = normalize_obs
+        self.ensemble_size = ensemble_size
+
+        self.flatten = Flatten()
+
+        self.linears = []
+        self.linears.append(VectorizedLinear(flattened_dim, channels[0], ensemble_size))
+        self.linears.append(nn.ReLU())
+        for i in range(len(channels) - 1):
+            self.linears.append(VectorizedLinear(channels[i], channels[i + 1], ensemble_size))
+            self.linears.append(nn.ReLU())
+        self.linears.append(VectorizedLinear(channels[-1], hidden_size, ensemble_size))
+        self.linears.append(nn.ReLU())
+        self.linears.append(VectorizedLinear(hidden_size, action_space, ensemble_size))
+        self.linears = nn.Sequential(*self.linears)
+
+    def forward(self, x):
+        # [batch_size, flattened_dim]
+        x = self.flatten(x)
+        # [ensemble_size, batch_size, flattened_dim]
+        x = x.unsqueeze(0).repeat_interleave(self.ensemble_size, dim=0)
+
+        if self.normalize_obs:
+            x = x / 255.
+
+        # [ensemble_size, batch_size, out_dim]
+        out = self.linears(x)
+        
+        return out
