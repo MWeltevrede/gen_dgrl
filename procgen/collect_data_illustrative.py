@@ -1,7 +1,7 @@
 from gym.envs.registration import register
 import gym
 import numpy as np
-import io
+import io, os
 
 # alternating subgroup
 train_tasks = [((255,0,128), 'left'), ((255,0,128), 'right'), ((255,0,128), 'top'), ((255,0,128), 'bottom'),
@@ -22,13 +22,13 @@ test_tasks = [((128,255,0), 'left'), ((128,255,0), 'right'), ((128,255,0), 'top'
 #                 ((213,109,113), 'left'), ((213,109,113), 'right'), ((213,109,113), 'top'), ((213,109,113), 'bottom')]
 
 register(
-     id="IllustrativeCMDPContinuous-v0",
-     entry_point="illustrative_env:IllustrativeCMDPContinuous",
+     id="GridIllustrativeCMDPContinuous-v0",
+     entry_point="grid_illustrative_env:IllustrativeCMDPContinuous",
 )
 
 register(
-     id="IllustrativeCMDPDiscrete-v0",
-     entry_point="illustrative_env:IllustrativeCMDPDiscrete",
+     id="GridIllustrativeCMDPDiscrete-v0",
+     entry_point="grid_illustrative_env:IllustrativeCMDPDiscrete",
 )
 
 def optimal_policy(env):
@@ -47,9 +47,12 @@ def optimal_policy(env):
         return 3
 
 
-env = gym.make('IllustrativeCMDPContinuous-v0', tasks=train_tasks, arm_length=6)
+env = gym.make('GridIllustrativeCMDPContinuous-v0', tasks=train_tasks, arm_length=6)
 env.seed(88)
 obs = env.reset()
+
+dataset_dirname = 'datasets/grid_illustrative'
+os.makedirs(dataset_dirname, exist_ok=True)
 
 ep_obs = [obs]
 ep_rewards = []
@@ -71,7 +74,7 @@ for i in range(len(train_tasks)):
             with io.BytesIO() as bs:
                 np.savez_compressed(bs, **episode)
                 bs.seek(0)
-                with open(f'datasets/illustrative/episode_{i}.npy', "wb") as f:
+                with open(dataset_dirname + f'/episode_{i}.npy', "wb") as f:
                     f.write(bs.read())
             obs = env.reset()
             ep_obs = [obs]

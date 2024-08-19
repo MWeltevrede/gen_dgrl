@@ -23,9 +23,9 @@ def eval_agent(
     env_kwargs={},
 ):
     if discrete:
-        env = gym.make('IllustrativeCMDPDiscrete-v0', tasks=tasks, **env_kwargs)  
+        env = gym.make('GridIllustrativeCMDPDiscrete-v0', tasks=tasks, **env_kwargs)  
     else:
-        env = gym.make('IllustrativeCMDPContinuous-v0', tasks=tasks, **env_kwargs)   
+        env = gym.make('GridIllustrativeCMDPContinuous-v0', tasks=tasks, **env_kwargs)   
     
     eval_episode_rewards = []
     eval_episode_len = []

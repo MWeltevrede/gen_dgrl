@@ -26,12 +26,12 @@ from utils.early_stopper import EarlyStop
 from gym.envs.registration import register
 import gym
 register(
-     id="IllustrativeCMDPContinuous-v0",
-     entry_point="illustrative_env:IllustrativeCMDPContinuous",
+     id="GridIllustrativeCMDPContinuous-v0",
+     entry_point="grid_illustrative_env:IllustrativeCMDPContinuous",
 )
 register(
-     id="IllustrativeCMDPDiscrete-v0",
-     entry_point="illustrative_env:IllustrativeCMDPDiscrete",
+     id="GridIllustrativeCMDPDiscrete-v0",
+     entry_point="grid_illustrative_env:IllustrativeCMDPDiscrete",
 )
 
 args = parser.parse_args()
@@ -93,7 +93,7 @@ dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, pin_m
 print("Dataset Loaded!")
 
 # create Illustrative env
-if args.env_name == "illustrative":
+if args.env_name == "grid_illustrative":
     # Alternating subgroup
     train_tasks = [((255,0,128), 'left'), ((255,0,128), 'right'), ((255,0,128), 'top'), ((255,0,128), 'bottom'),
                 ((0,255,128), 'left'), ((0,255,128), 'right'), ((0,255,128), 'top'), ((0,255,128), 'bottom')]
@@ -102,7 +102,7 @@ if args.env_name == "illustrative":
                 ((255,128,0), 'left'), ((255,128,0), 'right'), ((255,128,0), 'top'), ((255,128,0), 'bottom'),
                 ((128,0,255), 'left'), ((128,0,255), 'right'), ((128,0,255), 'top'), ((128,0,255), 'bottom'),
                 ((0,128,255), 'left'), ((0,128,255), 'right'), ((0,128,255), 'top'), ((0,128,255), 'bottom')]
-elif args.env_name == "illustrative_random":
+elif args.env_name == "grid_illustrative_random":
     # Random training colours
     train_tasks = [((206,16,220), 'left'), ((206,16,220), 'right'), ((206,16,220), 'top'), ((206,16,220), 'bottom'),
                 ((86,185,105), 'left'), ((86,185,105), 'right'), ((86,185,105), 'top'), ((86,185,105), 'bottom')]
@@ -115,9 +115,9 @@ elif args.env_name == "illustrative_random":
 env_kwargs = {"arm_length": 6}
 
 if "cont" in args.algo:
-    env = gym.make('IllustrativeCMDPContinuous-v0', tasks=train_tasks, **env_kwargs)
+    env = gym.make('GridIllustrativeCMDPContinuous-v0', tasks=train_tasks, **env_kwargs)
 else:
-    env = gym.make('IllustrativeCMDPDiscrete-v0', tasks=train_tasks, **env_kwargs)
+    env = gym.make('GridIllustrativeCMDPDiscrete-v0', tasks=train_tasks, **env_kwargs)
 
 curr_epochs = 0
 last_logged_update_count_at_restart = -1
