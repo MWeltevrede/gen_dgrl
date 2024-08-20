@@ -25,7 +25,13 @@
             "illustrative"
         ],
         "hidden_size": [
-            32
+            64
+        ],
+        "channels": [
+            [128, 64]
+        ],
+        "normalize_obs": [
+            true
         ],
         "save_path": [
             "models/"

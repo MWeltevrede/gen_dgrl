@@ -13,7 +13,7 @@ from online.behavior_policies.distributions import Categorical, FixedCategorical
 
 
 class BehavioralCloningEnsemble:
-    def __init__(self, observation_space, action_space, lr, agent_model, hidden_size=64, ensemble_size=1):
+    def __init__(self, observation_space, action_space, lr, agent_model, hidden_size=64, ensemble_size=1, **kwargs):
         """
         Initialize the agent.
 
@@ -28,7 +28,7 @@ class BehavioralCloningEnsemble:
         self.hidden_size = hidden_size
         self.ensemble_size = ensemble_size
 
-        self.model_base = AGENT_CLASSES[agent_model](observation_space, action_space, hidden_size, use_actor_linear=True, ensemble_size=ensemble_size)
+        self.model_base = AGENT_CLASSES[agent_model](observation_space, action_space, hidden_size, use_actor_linear=True, ensemble_size=ensemble_size, **kwargs)
         self.optimizer = torch.optim.Adam(self.model_base.parameters(), lr=self.lr)
         
         self.total_steps = 0
@@ -127,7 +127,7 @@ class BehavioralCloningEnsemble:
 
 
 class BehavioralCloningEnsembleContinuous:
-    def __init__(self, observation_space, action_space, lr, agent_model, hidden_size=64, ensemble_size=1):
+    def __init__(self, observation_space, action_space, lr, agent_model, hidden_size=64, ensemble_size=1, **kwargs):
         """
         Initialize the agent.
 
@@ -144,7 +144,7 @@ class BehavioralCloningEnsembleContinuous:
         self.low = action_space.low.item()
         self.high = action_space.high.item()
 
-        self.model_base = AGENT_CLASSES[agent_model](observation_space, action_space.shape[0], hidden_size, use_actor_linear=True, ensemble_size=ensemble_size)
+        self.model_base = AGENT_CLASSES[agent_model](observation_space, action_space.shape[0], hidden_size, use_actor_linear=True, ensemble_size=ensemble_size, **kwargs)
         self.optimizer = torch.optim.Adam(self.model_base.parameters(), lr=self.lr)
         
         self.total_steps = 0

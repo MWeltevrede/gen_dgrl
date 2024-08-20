@@ -14,13 +14,13 @@ from offline.agents.dt import DecisionTransformer
 def _create_agent(args, env, extra_config):
     agent_name = args.algo
     if agent_name == "bc_cont":
-        return BehavioralCloningContinuous(env.observation_space, env.action_space, args.lr, args.agent_model, args.hidden_size)
+        return BehavioralCloningContinuous(env.observation_space, env.action_space, args.lr, args.agent_model, hidden_size=args.hidden_size, kwargs={'channels': args.channels, 'normalize_obs':args.normalize_obs})
     if agent_name == "bc":
-        return BehavioralCloning(env.observation_space, env.action_space.n, args.lr, args.agent_model, args.hidden_size)
+        return BehavioralCloning(env.observation_space, env.action_space.n, args.lr, args.agent_model, hidden_size=args.hidden_size, kwargs={'channels': args.channels, 'normalize_obs':args.normalize_obs})
     if agent_name == "bc_n_cont":
-        return BehavioralCloningEnsembleContinuous(env.observation_space, env.action_space, args.lr, args.agent_model, args.hidden_size, args.ensemble_size)
+        return BehavioralCloningEnsembleContinuous(env.observation_space, env.action_space, args.lr, args.agent_model, ensemble_size=args.ensemble_size, hidden_size=args.hidden_size, kwargs={'channels': args.channels, 'normalize_obs':args.normalize_obs})
     if agent_name == "bc_n":
-        return BehavioralCloningEnsemble(env.observation_space, env.action_space.n, args.lr, args.agent_model, args.hidden_size, args.ensemble_size)
+        return BehavioralCloningEnsemble(env.observation_space, env.action_space.n, args.lr, args.agent_model, ensemble_size=args.ensemble_size, hidden_size=args.hidden_size, kwargs={'channels': args.channels, 'normalize_obs':args.normalize_obs})
     if agent_name == "bcq":
         assert args.agent_model in ["bcq", "bcqresnetbase"]
         return BCQ(env.observation_space, 
