@@ -33,11 +33,26 @@ def generate_train_cmds(
         trial_idx = t + start_index
         params["seed"] += trial_idx
 
-        cmd = [f"python -m {args.module_name}"] + [
-            f"--{k}={vi}_{trial_idx}" if k == "xpid" else f"--{k}={vi}"
-            for k, v in params.items()
-            for vi in (v if isinstance(v, list) else [v])
-        ]
+        # cmd = [f"python -m {args.module_name}"] + [
+        #     f"--{k}={vi}_{trial_idx}" if k == "xpid" else f"--{k}={vi}"
+        #     for k, v in params.items()
+        #     for vi in (v if isinstance(v, list) else [v])
+        # ]
+        cmd = [f"python -m {args.module_name}"]
+        for k,v in params.items():
+            if k == "xpid":
+                cmd.append(f"--{k}={v}_{trial_idx}")
+            else:
+                if isinstance(v, list):
+                    cmd_str = ""
+                    for i, vi in enumerate(v):
+                        if i == 0:
+                            cmd_str += f"--{k} {vi}"
+                        else:
+                            cmd_str += f" {vi}"
+                    cmd.append(cmd_str)
+                else:
+                    cmd.append(f"--{k}={v}")
 
         cmds.append(separator.join(cmd))
 

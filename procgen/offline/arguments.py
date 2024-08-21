@@ -25,6 +25,8 @@ parser.add_argument("--resume", type=str2bool, default=False, help="Resume train
 parser.add_argument("--deterministic", type=str2bool, default=False, help="Sample actions deterministically")
 parser.add_argument("--xpid", type=str, default=None, help="experiment name")
 parser.add_argument("--eval_eps", type=float, default=0.001, help="epsilon for evaluation")
+parser.add_argument("--channels", nargs='+', type=int, default=64, help="the hidden layer sizes of the fully connected network")
+parser.add_argument("--normalize_obs", type=str2bool, default=False, help="whether to  normalize the image observation by dividing by 255")
 
 # Environment
 parser.add_argument("--env_name", type=str, default="bigfish", help="Name of environment")
