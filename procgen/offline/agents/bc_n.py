@@ -141,8 +141,8 @@ class BehavioralCloningEnsembleContinuous:
         self.lr = lr
         self.hidden_size = hidden_size
         self.ensemble_size = ensemble_size
-        self.low = action_space.low.item()
-        self.high = action_space.high.item()
+        self.low = torch.as_tensor(action_space.low).float()
+        self.high = torch.as_tensor(action_space.high).float()
 
         self.model_base = AGENT_CLASSES[agent_model](observation_space, action_space.shape[0], hidden_size, use_actor_linear=True, ensemble_size=ensemble_size, **kwargs)
         self.optimizer = torch.optim.Adam(self.model_base.parameters(), lr=self.lr)
@@ -157,9 +157,12 @@ class BehavioralCloningEnsembleContinuous:
 
     def set_device(self, device):
         self.model_base.to(device)
+        self.low = self.low.to(device)
+        self.high = self.high.to(device)
 
     def unnormalise(self, x):
         # turn x from range [-1, 1] to [self.low, self.high]
+        x = torch.tanh(x)
         return ((x+1)/2.)*(self.high - self.low) + self.low
 
     def eval_step(self, observation, eps=0.0):
@@ -176,8 +179,7 @@ class BehavioralCloningEnsembleContinuous:
         with torch.no_grad():
             # [ensemble_size, batch_size, out_dim]
             unbound_output = self.model_base(observation)
-            bound_output = torch.tanh(unbound_output)
-            action = self.unnormalise(bound_output).squeeze(-1)
+            action = self.unnormalise(unbound_output).squeeze(-1)
             action = action.mean(dim=0)
 
 
@@ -196,12 +198,12 @@ class BehavioralCloningEnsembleContinuous:
             
         # [ensemble_size, batch_size, out_dim]
         unbound_output = self.model_base(observations)
-        bound_output = torch.tanh(unbound_output)
-        policy_output = self.unnormalise(bound_output).squeeze(-1)
+        policy_output = self.unnormalise(unbound_output).squeeze(-1)
 
         
         self.optimizer.zero_grad()
-        loss = ((policy_output - actions.broadcast_to(policy_output.shape).float()) ** 2).mean(dim=1).sum(dim=0)
+        dims_to_mean_over = list(range(len(policy_output.shape)))[1:]
+        loss = ((policy_output - actions.broadcast_to(policy_output.shape).float()) ** 2).mean(dim=dims_to_mean_over).sum(dim=0)
         loss.backward()
         self.optimizer.step()
         self.total_steps += 1
