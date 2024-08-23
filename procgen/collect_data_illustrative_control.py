@@ -60,6 +60,7 @@ ep_dones = []
 ep_actions = []
 for i in range(len(train_tasks)):
     done = False
+    step = 0
     while not done:
         action = optimal_policy(env)
         obs, reward, done, _ = env.step(np.array(action))
@@ -67,9 +68,10 @@ for i in range(len(train_tasks)):
         ep_rewards.append([reward])
         ep_dones.append(done)
         ep_actions.append([action])
+        step += 1
 
         if done:
-            print(ep_rewards, ep_dones)
+            print(ep_rewards, ep_dones, step)
             episode = {'observations': np.array(ep_obs), 'actions': np.array(ep_actions), 'rewards': np.array(ep_rewards), 'dones': np.array(ep_dones)}
             with io.BytesIO() as bs:
                 np.savez_compressed(bs, **episode)
