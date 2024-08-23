@@ -1,37 +1,37 @@
 {
     "grid": {
         "algo": [
-            "bc"
+            "bc_cont"
         ],
         "env_name": [
-            "illustrative"
+            "control_illustrative"
         ],
         "dataset": [
             "datasets"
         ],
         "lr": [
-            5e-4
+            1e-4
         ],
         "batch_size": [
             6
         ],
         "dataset_size":[
-            48
+            108
         ],
         "epochs": [
-            500
+            1000
         ],
         "agent_model": [
             "illustrative"
         ],
         "hidden_size": [
-            64
+            32
         ],
         "channels": [
-            [128, 64]
+            [64, 64]
         ],
         "normalize_obs": [
-            true
+            false
         ],
         "save_path": [
             "models/"
@@ -46,7 +46,7 @@
             1.0
         ],
         "eval_freq":[
-            10
+            20
         ],
         "eval_eps": [
             0
