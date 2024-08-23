@@ -17,16 +17,18 @@ def eval_agent(
     agent: nn.Module,
     device,
     tasks,
-    discrete=False,
+    env="grid_discrete",
     eval_eps=0.001,
-    num_episodes=18,
     env_kwargs={},
 ):
-    if discrete:
+    if env == "grid_discrete":
         env = gym.make('GridIllustrativeCMDPDiscrete-v0', tasks=tasks, **env_kwargs)  
-    else:
+    elif env == "grid_continuous":
         env = gym.make('GridIllustrativeCMDPContinuous-v0', tasks=tasks, **env_kwargs)   
-    
+    elif env == "control":
+        env = gym.make('ControlIllustrativeCMDP-v0', tasks=tasks)
+
+    num_episodes = len(tasks)
     eval_episode_rewards = []
     eval_episode_len = []
     agent.eval()
@@ -40,9 +42,12 @@ def eval_agent(
             # normalize obs to [0, 1] if [0,255]
             # if obs.max() > 1.0:
             #     obs /= 255.0
+            if len(obs.shape) == 1:
+                # add batch dimension
+                obs = obs.unsqueeze(0)
             action = agent.eval_step(obs, eps=eval_eps)
             # using numpy, if action is of shape [1,1] then convert it to [1]
-            if action.shape == (1, 1):
+            if len(action.shape) == 2:
                 action = action[0]
             obs, reward, done, _ = env.step(action)
             episode_len += 1

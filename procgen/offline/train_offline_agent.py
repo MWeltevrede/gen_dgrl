@@ -33,6 +33,10 @@ register(
      id="GridIllustrativeCMDPDiscrete-v0",
      entry_point="grid_illustrative_env:IllustrativeCMDPDiscrete",
 )
+register(
+     id="ControlIllustrativeCMDP-v0",
+     entry_point="control_illustrative_env:ControlIllustrativeCMDP",
+)
 
 args = parser.parse_args()
 print(args)
@@ -111,13 +115,30 @@ elif args.env_name == "grid_illustrative_random":
                 ((52,128,100), 'left'), ((52,128,100), 'right'), ((52,128,100), 'top'), ((52,128,100), 'bottom'),
                 ((35,21,88), 'left'), ((35,21,88), 'right'), ((35,21,88), 'top'), ((35,21,88), 'bottom'),
                 ((213,109,113), 'left'), ((213,109,113), 'right'), ((213,109,113), 'top'), ((213,109,113), 'bottom')]
+elif args.env_name == "control_illustrative":
+    # C4 Rotations
+    train_tasks = [(45,-45,0), (45,-45,90), (45,-45,180), (45,-45,270)]
+    # Random testing rotations
+    test_tasks = [(45,-45,-11), (45,-45,11), (45,-45,65), (45,-45,99), (45,-45,167), (45,-45,204), (45,-45,259), (45,-45,325)]
+elif args.env_name == "control_illustrative_random":
+    # Random Rotations
+    train_tasks = [(45,-45,-6), (45,-45,94), (45,-45,171), (45,-45,289)]
+    # Random testing rotations
+    test_tasks = [(45,-45,-11), (45,-45,11), (45,-45,65), (45,-45,99), (45,-45,167), (45,-45,204), (45,-45,259), (45,-45,325)]
 
-env_kwargs = {"arm_length": 6}
 
-if "cont" in args.algo:
-    env = gym.make('GridIllustrativeCMDPContinuous-v0', tasks=train_tasks, **env_kwargs)
-else:
-    env = gym.make('GridIllustrativeCMDPDiscrete-v0', tasks=train_tasks, **env_kwargs)
+if "grid" in args.env_name:
+    env_kwargs = {"arm_length": 6}
+    if "cont" in args.algo:
+        env = gym.make('GridIllustrativeCMDPContinuous-v0', tasks=train_tasks, **env_kwargs)
+        eval_env_type = "grid_continuous"
+    else:
+        env = gym.make('GridIllustrativeCMDPDiscrete-v0', tasks=train_tasks, **env_kwargs)
+        eval_env_type = "grid_discrete"
+elif "control" in args.env_name:
+    env_kwargs = {}
+    env = gym.make('ControlIllustrativeCMDP-v0', tasks=train_tasks)
+    eval_env_type = "control"
 
 curr_epochs = 0
 last_logged_update_count_at_restart = -1
@@ -181,7 +202,7 @@ for epoch in range(curr_epochs, args.epochs):
             agent,
             device,
             test_tasks,
-            discrete=(args.algo == "bc"),
+            env=eval_env_type,
             eval_eps=args.eval_eps,
             env_kwargs=env_kwargs
         )
@@ -189,7 +210,7 @@ for epoch in range(curr_epochs, args.epochs):
             agent,
             device,
             train_tasks,
-            discrete=(args.algo == "bc"),
+            env=eval_env_type,
             eval_eps=args.eval_eps,
             env_kwargs=env_kwargs
         )
@@ -222,8 +243,8 @@ for epoch in range(curr_epochs, args.epochs):
         agent.save(num_epochs=curr_epochs, path=os.path.join(args.save_path, args.env_name, args.xpid, "model.pt"))
         agent.save(num_epochs=curr_epochs, path=os.path.join(args.save_path, args.env_name, args.xpid, f"model_{epoch}.pt"))
                 
-test_mean_perf, test_mean_len = eval_agent(agent, device, test_tasks, discrete=(args.algo == "bc"), eval_eps=args.eval_eps, env_kwargs=env_kwargs)
-train_mean_perf, train_mean_len = eval_agent(agent, device, train_tasks, discrete=(args.algo == "bc"), eval_eps=args.eval_eps, env_kwargs=env_kwargs)
+test_mean_perf, test_mean_len = eval_agent(agent, device, test_tasks, env=eval_env_type, eval_eps=args.eval_eps, env_kwargs=env_kwargs)
+train_mean_perf, train_mean_len = eval_agent(agent, device, train_tasks, env=eval_env_type, eval_eps=args.eval_eps, env_kwargs=env_kwargs)
 
 wandb.log({"final_test_ret": test_mean_perf, "final_test_len": test_mean_len, "final_train_ret": train_mean_perf, "final_train_len": train_mean_len}, step=(epoch + 1))
 filewriter.log_final_test_eval({

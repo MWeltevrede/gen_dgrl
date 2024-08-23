@@ -24,7 +24,9 @@ def load_episode(path) -> Dict[str, np.ndarray]:
         if not hasattr(episode, "keys"):
             episode = episode.item()
         episode = {k: episode[k] for k in episode.keys()}
-        episode['observations'] = episode['observations'].astype(np.uint8)
+        if len(episode['observations'].shape) == 4:
+            # Assume observations are rgb images
+            episode['observations'] = episode['observations'].astype(np.uint8)
         episode['rewards'] = episode['rewards'].astype(float)
         return episode
 
