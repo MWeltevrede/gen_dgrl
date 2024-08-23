@@ -3,55 +3,32 @@ import gym
 import numpy as np
 import io, os
 
-# alternating subgroup
-train_tasks = [((255,0,128), 'left'), ((255,0,128), 'right'), ((255,0,128), 'top'), ((255,0,128), 'bottom'),
-                ((0,255,128), 'left'), ((0,255,128), 'right'), ((0,255,128), 'top'), ((0,255,128), 'bottom')]
+# C4 Rotations
+train_tasks = [(45,-45,0), (45,-45,90), (45,-45,180), (45,-45,270)]
 
-test_tasks = [((128,255,0), 'left'), ((128,255,0), 'right'), ((128,255,0), 'top'), ((128,255,0), 'bottom'),
-                ((255,128,0), 'left'), ((255,128,0), 'right'), ((255,128,0), 'top'), ((255,128,0), 'bottom'),
-                ((128,0,255), 'left'), ((128,0,255), 'right'), ((128,0,255), 'top'), ((128,0,255), 'bottom'),
-                ((0,128,255), 'left'), ((0,128,255), 'right'), ((0,128,255), 'top'), ((0,128,255), 'bottom')]
+# # Random Rotations
+# train_tasks = [(45,-45,-6), (45,-45,94), (45,-45,171), (45,-45,289)]
 
-# # Random Colours
-# train_tasks = [((206,16,220), 'left'), ((206,16,220), 'right'), ((206,16,220), 'top'), ((206,16,220), 'bottom'),
-#                 ((86,185,105), 'left'), ((86,185,105), 'right'), ((86,185,105), 'top'), ((86,185,105), 'bottom')]
-
-# test_tasks = [((237,48,217), 'left'), ((237,48,217), 'right'), ((237,48,217), 'top'), ((237,48,217), 'bottom'),
-#                 ((52,128,100), 'left'), ((52,128,100), 'right'), ((52,128,100), 'top'), ((52,128,100), 'bottom'),
-#                 ((35,21,88), 'left'), ((35,21,88), 'right'), ((35,21,88), 'top'), ((35,21,88), 'bottom'),
-#                 ((213,109,113), 'left'), ((213,109,113), 'right'), ((213,109,113), 'top'), ((213,109,113), 'bottom')]
+test_tasks = [(45,-45,-11), (45,-45,11), (45,-45,65), (45,-45,99), (45,-45,167), (45,-45,204), (45,-45,259), (45,-45,325)]
 
 register(
-     id="GridIllustrativeCMDPContinuous-v0",
-     entry_point="grid_illustrative_env:IllustrativeCMDPContinuous",
+     id="ControlIllustrativeCMDP-v0",
+     entry_point="control_illustrative_env:ControlIllustrativeCMDP",
 )
 
-register(
-     id="GridIllustrativeCMDPDiscrete-v0",
-     entry_point="grid_illustrative_env:IllustrativeCMDPDiscrete",
-)
-
-def optimal_policy(env):
-    agent_location = env._agent_location
-    if agent_location[0] < env.arm_length:
-        # The agent is on the left
-        return 0
-    if agent_location[0] > env.arm_length:
-        # The agent is on the right
-        return 2
-    if agent_location[1] < env.arm_length:
-        # The agent is on the top
-        return 1
-    if agent_location[1] > env.arm_length:
-        # The agent is on the bottom
-        return 3
+def optimal_policy(step):
+    # a handcrafted (basically) optimal policy
+    if step < 12:
+        return [-2, 2]
+    else:
+        return [2, 2]
 
 
-env = gym.make('GridIllustrativeCMDPContinuous-v0', tasks=train_tasks, arm_length=6)
+env = gym.make('ControlIllustrativeCMDP-v0', tasks=train_tasks)
 env.seed(88)
 obs = env.reset()
 
-dataset_dirname = 'datasets/grid_illustrative'
+dataset_dirname = 'datasets/control_illustrative'
 os.makedirs(dataset_dirname, exist_ok=True)
 
 ep_obs = [obs]
@@ -62,12 +39,12 @@ for i in range(len(train_tasks)):
     done = False
     step = 0
     while not done:
-        action = optimal_policy(env)
+        action = optimal_policy(step)
         obs, reward, done, _ = env.step(np.array(action))
         ep_obs.append(obs)
         ep_rewards.append([reward])
         ep_dones.append(done)
-        ep_actions.append([action])
+        ep_actions.append(action)
         step += 1
 
         if done:
