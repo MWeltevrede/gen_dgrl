@@ -379,20 +379,26 @@ class BCQResnetBaseEncoder(NNBase):
 
 
 class IllustrativeEncoder(NNBase):
-    def __init__(self, observation_space, action_space, hidden_size=64, channels=[128, 64], use_actor_linear=True, normalize_obs=True):
+    def __init__(self, observation_space, action_space, hidden_size=64, channels=[128, 64], use_actor_linear=True, normalize_obs=True, activation='relu'):
         super().__init__(hidden_size)
         flattened_dim = np.prod(observation_space.shape)
         self.normalize_obs = normalize_obs
+        if activation == 'relu':
+            activation = nn.ReLU
+        elif activation == 'tanh':
+            activation = nn.Tanh
+        else:
+            activation = nn.ReLU
 
         self.linears = []
         self.linears.append(Flatten())
         self.linears.append(nn.Linear(flattened_dim, channels[0]))
-        self.linears.append(nn.ReLU())
+        self.linears.append(activation())
         for i in range(len(channels) - 1):
             self.linears.append(nn.Linear(channels[i], channels[i + 1]))
-            self.linears.append(nn.ReLU())
+            self.linears.append(activation())
         self.linears.append(nn.Linear(channels[-1], hidden_size))
-        self.linears.append(nn.ReLU())
+        self.linears.append(activation())
         self.linears.append(nn.Linear(hidden_size, action_space))
         self.linears = nn.Sequential(*self.linears)
 
@@ -429,22 +435,28 @@ class VectorizedLinear(nn.Module):
         return x @ self.weight + self.bias
     
 class IllustrativeEncoderEnsemble(NNBase):
-    def __init__(self, observation_space, action_space, hidden_size=64, channels=[128, 64], use_actor_linear=True, normalize_obs=True, ensemble_size=1):
+    def __init__(self, observation_space, action_space, hidden_size=64, channels=[128, 64], use_actor_linear=True, normalize_obs=True, ensemble_size=1, activation='relu'):
         super().__init__(hidden_size)
         flattened_dim = np.prod(observation_space.shape)
         self.normalize_obs = normalize_obs
         self.ensemble_size = ensemble_size
+        if activation == 'relu':
+            activation = nn.ReLU
+        elif activation == 'tanh':
+            activation = nn.Tanh
+        else:
+            activation = nn.ReLU
 
         self.flatten = Flatten()
 
         self.linears = []
         self.linears.append(VectorizedLinear(flattened_dim, channels[0], ensemble_size))
-        self.linears.append(nn.ReLU())
+        self.linears.append(activation())
         for i in range(len(channels) - 1):
             self.linears.append(VectorizedLinear(channels[i], channels[i + 1], ensemble_size))
-            self.linears.append(nn.ReLU())
+            self.linears.append(activation())
         self.linears.append(VectorizedLinear(channels[-1], hidden_size, ensemble_size))
-        self.linears.append(nn.ReLU())
+        self.linears.append(activation())
         self.linears.append(VectorizedLinear(hidden_size, action_space, ensemble_size))
         self.linears = nn.Sequential(*self.linears)
 

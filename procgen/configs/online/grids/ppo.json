@@ -1,25 +1,61 @@
 {
     "grid": {
         "env_name": [
-            "bigfish", "bossfight", "caveflyer", "chaser", "climber", "coinrun", "dodgeball", "fruitbot", "heist", "jumper", "leaper", "maze", "miner", "ninja", "plunder", "starpilot"
+            "control_illustrative"
         ],
         "algo": [
             "ppo"
         ],
+        "hidden_size": [
+            32, 64
+        ],
+        "channels": [
+            [64, 64], [128, 128]
+        ],
+        "normalize_obs": [
+            false
+        ],
         "ppo_epoch": [
-            3
+            10, 5
         ],
         "num_levels": [
             200
         ],
         "resume": [
-            true
+            false
         ],
         "model_saving_dir": [
-            "your_checkpoint_dir"
+            "models/"
         ],
         "num_env_steps": [
-            25000000
+            500000
+        ],
+        "num_processes": [
+            1
+        ],
+        "num_steps": [
+            2000, 1000, 4000
+        ],
+        "log_interval": [
+            10
+        ],
+        "clip_param": [
+            0.1, 0.2, 0.3
+        ],
+        "entropy_coef": [
+            0, 0.01
+        ],
+        "gae_lambda": [
+            0.9, 0.95
+        ],
+        "gamma": [
+            0.999, 0.99, 0.9
+        ],
+        "num_mini_batch": [
+            4, 8, 12
+        ],
+        "value_loss_coef": [
+            0.5, 1.0
         ]
     }
 }

@@ -8,6 +8,7 @@ import argparse
 import logging
 import os
 import time
+import json
 
 import torch
 import torch.nn as nn
@@ -125,6 +126,72 @@ elif args.env_name == "control_illustrative_random":
     train_tasks = [(45,-45,-6), (45,-45,94), (45,-45,171), (45,-45,289)]
     # Random testing rotations
     test_tasks = [(45,-45,-11), (45,-45,11), (45,-45,65), (45,-45,99), (45,-45,167), (45,-45,204), (45,-45,259), (45,-45,325)]
+elif args.env_name == "control_illustrative_base":
+    # Base tasks: same rotations as the random rotations above, but with randomised starting poses for the robot arm
+    train_tasks = [
+        (248,77,-6), (105,213,94), (152,290,171), (358,43,289),     # unique poses
+    ]
+    test_tasks = []
+elif args.env_name == "control_illustrative_da_expl":
+    # Now we perform 'data augmentation' by enumerating all poses for all rotations for the base set of tasks above
+    train_tasks = [
+        (248,77,-6), (105,213,94), (152,290,171), (358,43,289),     # unique poses
+        (105,213,-6), (152,290,94), (358,43,171), (248,77,289),     # duplicate all the poses in all tasks
+        (152,290,-6), (358,43,94), (248,77,171), (105,213,289),     # duplicate all the poses in all tasks
+        (358,43,-6), (248,77,94), (105,213,171), (152,290,289),     # duplicate all the poses in all tasks
+    ]
+    test_tasks = []
+elif args.env_name == "control_illustrative_random_expl":
+    # Now we imitate random pure exploration at the start of each episode (ExploreGo)
+    # by adding three random poses to each of the base tasks
+    train_tasks = [
+        (248,77,-6), (105,213,94), (152,290,171), (358,43,289),     # unique poses
+        (288,75,-6), (213,17,94), (56,215,171), (357,274,289),     # random poses in all tasks
+        (40,86,-6), (305,136,94), (187,91,171), (101,240,289),     # random poses in all tasks
+        (129,254,-6), (117,352,94), (60,167,171), (258,214,289),     # random poses in all tasks
+    ]
+    test_tasks = []
+elif args.env_name == "control_illustrative_unreachable":
+    # Now we add completely new (unreachable) tasks by randomly sampling from the full distribution
+    train_tasks = [
+        (248,77,-6), (105,213,94), (152,290,171), (358,43,289),     # unique poses
+        (288,75,20), (213,17,305), (56,215,269), (357,274,293),     # random poses and rotations in all tasks
+        (40,86,185), (305,136,2), (187,91,350), (101,240,101),     # random poses and rotations in all tasks
+        (129,254,22), (117,352,57), (60,167,118), (258,214,230),     # random poses and rotations in all tasks
+    ]
+    test_tasks = []
+elif args.env_name == "control_illustrative_unreachable32":
+    # Now we add completely new (unreachable) tasks by randomly sampling from the full distribution
+    train_tasks = [
+        (248,77,-6), (105,213,94), (152,290,171), (358,43,289),     # unique poses
+        (288,75,20), (213,17,305), (56,215,269), (357,274,293),     # random poses and rotations in all tasks
+        (40,86,185), (305,136,2), (187,91,350), (101,240,101),     # random poses and rotations in all tasks
+        (129,254,22), (117,352,57), (60,167,118), (258,214,230),     # random poses and rotations in all tasks
+        (187,2,207), (337,91,143), (197,146 ,54), (138,293,200),     # random poses and rotations in all tasks
+        (38,195,284), (78,259,1), (97,139,19), (109,53,261),     # random poses and rotations in all tasks
+        (60,217,235), (39,252,162), (304,307,283), (264,216,240),     # random poses and rotations in all tasks
+        (52,191,186), (164,179,149), (80,13,106), (124,95,265),     # random poses and rotations in all tasks
+    ]
+    test_tasks = []
+else:
+    set_id = args.env_name[-1]
+    with open(f'datasets/task_sets_{set_id}.json', 'r') as file:
+        tasks_dict = json.load(file)
+    
+    if "base" in args.env_name:
+        train_tasks = tasks_dict['base_tasks']
+    elif "da_expl" in args.env_name:
+        train_tasks = tasks_dict['da_expl_tasks']
+    elif "random_expl" in args.env_name:
+        train_tasks = tasks_dict['random_expl_tasks']
+    elif "unreachablex2" in args.env_name:
+        train_tasks = tasks_dict['unreachablex2_tasks']
+    elif "unreachablex4" in args.env_name:
+        train_tasks = tasks_dict['unreachablex4_tasks']
+    elif "unreachablex8" in args.env_name:
+        train_tasks = tasks_dict['unreachablex8_tasks']
+    test_tasks = []
+
 
 
 if "grid" in args.env_name:
@@ -190,7 +257,7 @@ for epoch in range(curr_epochs, args.epochs):
             dones.to(device),
         )
         stats_dict = agent.train_step(
-            observations.float(), actions.long(), rewards.float(), next_observations.float(), dones.float()
+            observations.float(), actions, rewards.float(), next_observations.float(), dones.float()
         )
         epoch_loss += stats_dict["loss"]
     epoch_end_time = time.time()

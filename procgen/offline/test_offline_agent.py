@@ -28,7 +28,7 @@ def eval_agent(
     elif env == "control":
         env = gym.make('ControlIllustrativeCMDP-v0', tasks=tasks)
 
-    num_episodes = len(tasks)
+    num_episodes = 100 if len(tasks) == 0 else len(tasks)
     eval_episode_rewards = []
     eval_episode_len = []
     agent.eval()

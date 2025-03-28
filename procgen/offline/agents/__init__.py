@@ -5,7 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 from offline.agents.bc import BehavioralCloning, BehavioralCloningContinuous
-from offline.agents.bc_n import BehavioralCloningEnsemble, BehavioralCloningEnsembleContinuous
+from offline.agents.bc_n import BehavioralCloningEnsemble, BehavioralCloningEnsembleContinuous, BehavioralCloningEnsembleContinuousWithPriors
 from offline.agents.bcq import BCQ
 from offline.agents.ddqn_cql import CQL
 from offline.agents.iql import IQL
@@ -14,13 +14,15 @@ from offline.agents.dt import DecisionTransformer
 def _create_agent(args, env, extra_config):
     agent_name = args.algo
     if agent_name == "bc_cont":
-        return BehavioralCloningContinuous(env.observation_space, env.action_space, args.lr, args.agent_model, hidden_size=args.hidden_size, channels=args.channels, normalize_obs=args.normalize_obs)
+        return BehavioralCloningContinuous(env.observation_space, env.action_space, args.lr, args.agent_model, hidden_size=args.hidden_size, channels=args.channels, normalize_obs=args.normalize_obs, activation=args.activation)
     if agent_name == "bc":
-        return BehavioralCloning(env.observation_space, env.action_space.n, args.lr, args.agent_model, hidden_size=args.hidden_size, channels=args.channels, normalize_obs=args.normalize_obs)
+        return BehavioralCloning(env.observation_space, env.action_space.n, args.lr, args.agent_model, hidden_size=args.hidden_size, channels=args.channels, normalize_obs=args.normalize_obs, activation=args.activation)
     if agent_name == "bc_n_cont":
-        return BehavioralCloningEnsembleContinuous(env.observation_space, env.action_space, args.lr, args.agent_model, ensemble_size=args.ensemble_size, hidden_size=args.hidden_size, channels=args.channels, normalize_obs=args.normalize_obs)
+        return BehavioralCloningEnsembleContinuous(env.observation_space, env.action_space, args.lr, args.agent_model, ensemble_size=args.ensemble_size, hidden_size=args.hidden_size, channels=args.channels, normalize_obs=args.normalize_obs, activation=args.activation)
+    if agent_name == "bc_n_cont_p":
+        return BehavioralCloningEnsembleContinuousWithPriors(env.observation_space, env.action_space, args.lr, args.agent_model, ensemble_size=args.ensemble_size, cycle_priors=args.cycle_priors, hidden_size=args.hidden_size, channels=args.channels, normalize_obs=args.normalize_obs, activation=args.activation)
     if agent_name == "bc_n":
-        return BehavioralCloningEnsemble(env.observation_space, env.action_space.n, args.lr, args.agent_model, ensemble_size=args.ensemble_size, hidden_size=args.hidden_size, channels=args.channels, normalize_obs=args.normalize_obs)
+        return BehavioralCloningEnsemble(env.observation_space, env.action_space.n, args.lr, args.agent_model, ensemble_size=args.ensemble_size, hidden_size=args.hidden_size, channels=args.channels, normalize_obs=args.normalize_obs, activation=args.activation)
     if agent_name == "bcq":
         assert args.agent_model in ["bcq", "bcqresnetbase"]
         return BCQ(env.observation_space, 

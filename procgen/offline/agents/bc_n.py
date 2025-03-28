@@ -10,6 +10,7 @@ import torch.nn.functional as F
 import numpy as np
 from utils import AGENT_CLASSES
 from online.behavior_policies.distributions import Categorical, FixedCategorical
+import copy
 
 
 class BehavioralCloningEnsemble:
@@ -79,6 +80,8 @@ class BehavioralCloningEnsemble:
         :param observations: the observations for the environment
         :param actions: the actions for the environment
         """
+        actions = actions.long()
+
         # squeeze actions to [batch_size] if they are [batch_size, 1]
         if len(actions.shape) == 2:
             actions = actions.squeeze(dim=1)
@@ -141,8 +144,8 @@ class BehavioralCloningEnsembleContinuous:
         self.lr = lr
         self.hidden_size = hidden_size
         self.ensemble_size = ensemble_size
-        self.low = torch.as_tensor(action_space.low).float()
-        self.high = torch.as_tensor(action_space.high).float()
+        self.low = 100 * torch.as_tensor(action_space.low).float()
+        self.high = 100 * torch.as_tensor(action_space.high).float()
 
         self.model_base = AGENT_CLASSES[agent_model](observation_space, action_space.shape[0], hidden_size, use_actor_linear=True, ensemble_size=ensemble_size, **kwargs)
         self.optimizer = torch.optim.Adam(self.model_base.parameters(), lr=self.lr)
@@ -192,6 +195,8 @@ class BehavioralCloningEnsembleContinuous:
         :param observations: the observations for the environment
         :param actions: the actions for the environment
         """
+        actions = actions.float()
+
         # squeeze actions to [batch_size] if they are [batch_size, 1]
         if len(actions.shape) == 2:
             actions = actions.squeeze(dim=1)
@@ -234,6 +239,138 @@ class BehavioralCloningEnsembleContinuous:
         """
         checkpoint = torch.load(path)
         self.model_base.load_state_dict(checkpoint["model_base_state_dict"])
+        self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        self.total_steps = checkpoint["total_steps"]
+        return checkpoint["curr_epochs"]
+    
+
+class BehavioralCloningEnsembleContinuousWithPriors:
+    def __init__(self, observation_space, action_space, lr, agent_model, hidden_size=64, ensemble_size=1, cycle_priors=True, **kwargs):
+        """
+        Initialize the agent.
+
+        :param observation_space: the observation space for the environment
+        :param action_space: the action space for the environment
+        :param lr: the learning rate for the agent
+        :param hidden_size: the size of the hidden layers for the agent
+        """
+        self.observation_space = observation_space
+        self.action_space = action_space
+        self.lr = lr
+        self.hidden_size = hidden_size
+        self.ensemble_size = ensemble_size
+        self.low = 100 * torch.as_tensor(action_space.low).float()
+        self.high = 100 * torch.as_tensor(action_space.high).float()
+        self.cycle_priors = cycle_priors
+
+        self.model_base = AGENT_CLASSES[agent_model](observation_space, action_space.shape[0], hidden_size, use_actor_linear=True, ensemble_size=ensemble_size, **kwargs)
+        self.model_prior = copy.deepcopy(self.model_base)
+        for p in self.model_prior.parameters():
+            p.requires_grad = False
+        self.optimizer = torch.optim.Adam(self.model_base.parameters(), lr=self.lr)
+        
+        self.total_steps = 0
+
+    def train(self):
+        self.model_base.train()
+
+    def eval(self):
+        self.model_base.eval()
+
+    def set_device(self, device):
+        self.model_base.to(device)
+        self.model_prior.to(device)
+        self.low = self.low.to(device)
+        self.high = self.high.to(device)
+
+    def unnormalise(self, x):
+        # turn x from range [-1, 1] to [self.low, self.high]
+        x = torch.tanh(x)
+        return ((x+1)/2.)*(self.high - self.low) + self.low
+
+    def eval_step(self, observation, eps=0.0):
+        """
+        Given an observation, return an action.
+
+        :param observation: the observation for the environment
+        :return: the action for the environment in numpy
+        """
+        if len(observation.shape) == 3:
+            # add batch dimension
+            observation = observation.unsqueeze(0)
+        deterministic = eps == 0.0
+        with torch.no_grad():
+            # [ensemble_size, batch_size, out_dim]
+            unbound_output = self.model_base(observation)
+            unbound_priors = self.model_prior(observation)
+            if self.cycle_priors:
+                unbound_priors = torch.roll(unbound_priors, 1, dims=0)
+            unbound_output = unbound_output - unbound_priors
+
+            action = self.unnormalise(unbound_output).squeeze(-1)
+            action = action.mean(dim=0)
+
+
+        return action.cpu().numpy()
+
+    def train_step(self, observations, actions, rewards, next_observations, dones):
+        """
+        Update the agent given observations and actions.
+
+        :param observations: the observations for the environment
+        :param actions: the actions for the environment
+        """
+        actions = actions.float()
+
+        # squeeze actions to [batch_size] if they are [batch_size, 1]
+        if len(actions.shape) == 2:
+            actions = actions.squeeze(dim=1)
+            
+        # [ensemble_size, batch_size, out_dim]
+        unbound_output = self.model_base(observations)
+        with torch.no_grad():
+            unbound_priors = self.model_prior(observations)
+            if self.cycle_priors:
+                unbound_priors = torch.roll(unbound_priors, 1, dims=0)
+        unbound_output = unbound_output - unbound_priors
+        policy_output = self.unnormalise(unbound_output).squeeze(-1)
+
+        
+        self.optimizer.zero_grad()
+        dims_to_mean_over = list(range(len(policy_output.shape)))[1:]
+        loss = ((policy_output - actions.broadcast_to(policy_output.shape).float()) ** 2).mean(dim=dims_to_mean_over).sum(dim=0)
+        loss.backward()
+        self.optimizer.step()
+        self.total_steps += 1
+        # create stats dict
+        stats = {"loss": loss.item(), "total_steps": self.total_steps}
+        return stats
+
+    def save(self, num_epochs, path):
+        """
+        Save the model to a given path.
+
+        :param path: the path to save the model
+        """
+        save_dict = {
+            "model_base_state_dict": self.model_base.state_dict(),
+            "model_priors_state_dict": self.model_prior.state_dict(),
+            "optimizer_state_dict": self.optimizer.state_dict(),
+            "total_steps": self.total_steps,
+            "curr_epochs": num_epochs
+        }
+        torch.save(save_dict, path)
+        return
+
+    def load(self, path):
+        """
+        Load the model from a given path.
+
+        :param path: the path to load the model
+        """
+        checkpoint = torch.load(path)
+        self.model_base.load_state_dict(checkpoint["model_base_state_dict"])
+        self.model_prior.load_state_dict(checkpoint["model_priors_state_dict"])
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         self.total_steps = checkpoint["total_steps"]
         return checkpoint["curr_epochs"]

@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 
 import gym
 from gym import spaces
@@ -47,13 +48,19 @@ class ControlIllustrativeCMDP(gym.Env):
     - shoulder location along unit circle: the angle that defines the position of the shoulder along the unit circle. 
                                             Zero degrees is equal to position (0,1). Defined as positive counter-clockwise.
     '''
-    def __init__(self, tasks=[(45,-45,0), (45,-45,90), (45,-45,180), (45,-45,270)], g=10.0, **kwargs):
+    def __init__(self, tasks=None, g=10.0, **kwargs):
         self.tasks = tasks
         self._current_task_id = 0
-        self.num_tasks = len(tasks)
+        self.num_tasks = len(tasks) if tasks is not None else 0
         self._target_location = np.array([0.0,0.0])
         self._epsilon = 0.01
         self.step_counter = 0
+
+        # self._target_region = []
+        # for dx in np.linspace(-0.1, 0.1, 50):
+        #     for dy in np.linspace(-0.1, 0.1, 50):
+        #         if np.linalg.norm(np.array([dx, dy])) < self._epsilon:
+        #             self._target_region.append(np.array([dx, dy]))
 
         self.max_speed = 4
         self.max_torque = 2.0
@@ -107,13 +114,21 @@ class ControlIllustrativeCMDP(gym.Env):
         self.hand_loc = shifted_hand_loc + self.shoulder_loc
 
         # reward 1 if hand is close enough to target locations or has been in between the current and last timestep
-        reward = 0
-        if segment_distance(self._target_location, previous_hand_loc, self.hand_loc) < self._epsilon:
-            reward = 1
+        terminated = False
+        distance_to_target = segment_distance(self._target_location, previous_hand_loc, self.hand_loc)[0]
+        if distance_to_target < self._epsilon:
+            terminated = True
+            reward = 1.0
+        elif distance_to_target < self.smallest_segment_dist:
+            reward = (1. - (distance_to_target / 2.)) / (TIMEOUT_STEPS / 2.)
+            self.smallest_segment_dist = distance_to_target
+        else:
+            reward = 0.0
+            # reward = -(distance_to_target / 2.) / (TIMEOUT_STEPS / 2.)
+        self.ep_rewards += reward
 
         self.step_counter += 1
 
-        terminated = reward == 1
         truncated = False
         if self.step_counter >= TIMEOUT_STEPS:
             truncated = True
@@ -121,6 +136,8 @@ class ControlIllustrativeCMDP(gym.Env):
 
         info = {"TimeLimit.truncated": True} if truncated else {}
         info["level_seed"] = self._current_task_id
+        if done:
+            info["episode"] = {'r': self.ep_rewards}
 
         # transform the angular velocity into a velocity vector in Euclidean space
         vel_elbow = np.cross(np.array([0,0,self.ang_vel_shoulder]), np.array([self.elbow_loc[0], self.elbow_loc[1], 0]))[:2]
@@ -142,22 +159,34 @@ class ControlIllustrativeCMDP(gym.Env):
                          [np.sin(theta),  np.cos(theta)]])
 
     def reset(self):
-        self._current_task_id = (self._current_task_id + 1) % self.num_tasks
+        if self.num_tasks > 0:
+            self._current_task_id = (self._current_task_id + 1) % self.num_tasks
 
         self.shoulder_loc = np.array([0,1], dtype=np.float32)
 
         elbow_vector = np.array([0,-.5], dtype=np.float32)
-        shoulder_angle = self.tasks[self._current_task_id][0]
+        if self.num_tasks > 0:
+            shoulder_angle = self.tasks[self._current_task_id][0]
+        else:
+            # shoulder_angle = np.random.randint(-45, 45)
+            shoulder_angle = np.random.randint(0, 360)
         elbow_vector = np.dot(self._rotation_matrix(shoulder_angle), elbow_vector)
         self.elbow_loc = self.shoulder_loc + elbow_vector
 
         hand_vector = .5 * (-1. * self.elbow_loc) / np.linalg.norm(self.elbow_loc)
-        elbow_angle = self.tasks[self._current_task_id][1]
+        if self.num_tasks > 0:
+            elbow_angle = self.tasks[self._current_task_id][1]
+        else:
+            # elbow_angle = np.random.randint(-90, 90)
+            elbow_angle = np.random.randint(0, 360)
         hand_vector = np.dot(self._rotation_matrix(elbow_angle), hand_vector)
         self.hand_loc = self.elbow_loc + hand_vector
 
         # rotate the entire arm 
-        angle_along_unit_circle = self.tasks[self._current_task_id][2]
+        if self.num_tasks > 0:
+            angle_along_unit_circle = self.tasks[self._current_task_id][2]
+        else:
+            angle_along_unit_circle = np.random.randint(0, 360)
         self.shoulder_loc = np.dot(self._rotation_matrix(angle_along_unit_circle), self.shoulder_loc)
         self.elbow_loc = np.dot(self._rotation_matrix(angle_along_unit_circle), self.elbow_loc)
         self.hand_loc = np.dot(self._rotation_matrix(angle_along_unit_circle), self.hand_loc)
@@ -166,6 +195,8 @@ class ControlIllustrativeCMDP(gym.Env):
         self.ang_vel_elbow = 0.0
 
         self.step_counter = 0
+        self.ep_rewards = 0
+        self.smallest_segment_dist = np.linalg.norm(self.hand_loc)
         
         return np.array([*self.shoulder_loc, *self.elbow_loc, *self.hand_loc, self.ang_vel_shoulder, self.ang_vel_shoulder, self.ang_vel_elbow, self.ang_vel_elbow], dtype=np.float32)
     
@@ -176,9 +207,13 @@ class ControlIllustrativeCMDP(gym.Env):
 
         return np.clip(int_location + np.array([self.render_size // 2, self.render_size // 2]), 0, 2*self.render_size)
 
-    def render(self):
+    def render(self, mode=None):
         img = np.ones((3,2*self.render_size, 2*self.render_size))
 
+        # # Paint target region black
+        # for loc in self._target_region:
+        #     loc_inds = self._loc_to_pixel(loc)
+        #     img[:, loc_inds[1], loc_inds[0]] = np.array([0.,0.,0.])
         # Paint target location black
         goal_inds = self._loc_to_pixel(self._target_location)
         img[:, goal_inds[1], goal_inds[0]] = np.array([0.,0.,0.])
@@ -186,13 +221,63 @@ class ControlIllustrativeCMDP(gym.Env):
         # Paint shoulder red
         shoulder_inds = self._loc_to_pixel(self.shoulder_loc)
         img[:, shoulder_inds[1], shoulder_inds[0]] = np.array([1.,0.,0.])
+        # self._paint_region_around(img, shoulder_inds, np.array([1.,0.,0.]))
 
         # Paint elbow green
         elbow_inds = self._loc_to_pixel(self.elbow_loc)
         img[:, elbow_inds[1], elbow_inds[0]] = np.array([0.,1.,0.])
+        # self._paint_region_around(img, elbow_inds, np.array([0.,1.,0.]))
 
         # Paint hand blue
         hand_inds = self._loc_to_pixel(self.hand_loc)
         img[:, hand_inds[1], hand_inds[0]] = np.array([0.,0.,1.])
+        # self._paint_region_around(img, hand_inds, np.array([0.,0.,1.]))
 
         return img
+    
+    def _paint_region_around(self, img, inds, color):
+        img[:, inds[1]-1, inds[0]] = color
+        img[:, inds[1]-1, inds[0]-1] = color
+        img[:, inds[1]-1, inds[0]+1] = color
+        img[:, inds[1]+1, inds[0]] = color
+        img[:, inds[1]+1, inds[0]-1] = color
+        img[:, inds[1]+1, inds[0]+1] = color
+        img[:, inds[1], inds[0]-1] = color
+        img[:, inds[1], inds[0]+1] = color
+
+class ControlIllustrativeVenv(gym.Env):
+    def __init__(self, n_envs=1, device='cpu', tasks=None, g=10.0, **kwargs):
+        self.envs = [ControlIllustrativeCMDP(tasks=tasks, g=g, **kwargs) for _ in range(n_envs)]
+        self.n_envs = n_envs
+        self.observation_space = self.envs[0].observation_space
+        self.action_space = self.envs[0].action_space
+        self.device=device
+
+    def step(self, action):
+        obs_n = []
+        reward_n = []
+        done_n = []
+        info_n = []
+        for i, a in enumerate(action):
+            obs, reward, done, info = self.envs[i].step(a.cpu().numpy())
+            if done:
+                obs = self.envs[i].reset()
+            obs_n.append(obs)
+            reward_n.append(reward)
+            done_n.append(done)
+            info_n.append(info)
+
+        obs = torch.as_tensor(np.stack(obs_n), device=self.device)
+        rewards = torch.as_tensor(np.array(reward_n)[:, np.newaxis], device=self.device)
+        dones = torch.as_tensor(np.array(done_n, dtype=np.bool_), device=self.device)
+        infos = info_n
+
+        return obs, rewards, dones, infos
+    
+    def reset(self):
+        obs_n = []
+        for i in range(self.n_envs):
+            obs = self.envs[i].reset()
+            obs_n.append(obs)
+        return torch.as_tensor(np.stack(obs_n), device=self.device)
+        

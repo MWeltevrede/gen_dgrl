@@ -25,6 +25,8 @@ parser.add_argument("--eps", type=float, default=1e-5, help="RMSprop optimizer e
 parser.add_argument("--gae_lambda", type=float, default=0.95, help="gae lambda parameter")
 parser.add_argument("--gamma", type=float, default=0.999, help="discount factor for rewards")
 parser.add_argument("--hidden_size", type=int, default=256, help="state embedding dimension")
+parser.add_argument("--channels", nargs='+', type=int, default=64, help="the hidden layer sizes of the fully connected network")
+parser.add_argument("--normalize_obs", type=str2bool, default=False, help="whether to  normalize the image observation by dividing by 255")
 parser.add_argument("--lr", type=float, default=5e-4, help="learning rate")
 parser.add_argument("--max_grad_norm", type=float, default=0.5, help="max norm of gradients)")
 parser.add_argument("--num_mini_batch", type=int, default=8, help="number of batches for ppo")

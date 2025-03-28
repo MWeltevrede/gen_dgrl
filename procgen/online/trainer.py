@@ -13,9 +13,12 @@ import torch
 import torch.nn as nn
 
 import wandb
-from online.behavior_policies import PPOnet, ReplayBuffer, algos, arguments, make_venv
+from online.behavior_policies import PPOnet, ReplayBuffer, algos, arguments
 from online.evaluation import evaluate
 from utils.utils import LogDirType, LogItemType, set_seed
+
+from control_illustrative_env import ControlIllustrativeVenv
+from env_util import make_vec_env
 
 
 def _save_model(checkpoint: Dict[str, any], directory: str, filename: str) -> None:
@@ -42,23 +45,17 @@ def train(args):
     device = torch.device("cuda:0" if args.cuda else "cpu")
 
     # Create Envs
-    envs = make_venv(
-        num_envs=args.num_processes,
-        env_name=args.env_name,
+    envs = ControlIllustrativeVenv(
+        n_envs=args.num_processes,
         device=device,
-        **{
-            "num_levels": args.num_levels,
-            "start_level": args.start_level,
-            "distribution_mode": args.distribution_mode,
-            "ret_normalization": True,
-            "obs_normalization": True,
-        },
+        tasks=[(45,-45,0), (45,-45,90), (45,-45,180), (45,-45,270)],
     )
+    # envs = make_vec_env("Pendulum-v0", 4, device='cuda')
 
     # Initialize Model, Agent, and Replay Buffer
     obs_shape = envs.observation_space.shape
-    model = PPOnet(obs_shape, envs.action_space.n, base_kwargs={"hidden_size": args.hidden_size})
-    model.to(device)
+    model = PPOnet(envs.observation_space, envs.action_space, base_kwargs={"hidden_size": args.hidden_size, "channels": args.channels, "normalize_obs":args.normalize_obs})
+    model.set_device(device)
     print("\n Neural Network: ", model)
 
     agent = algos.PPO(
@@ -198,27 +195,34 @@ def train(args):
 
 
 def init_wandb(args):
-    if (
-        args.wandb_base_url is None
-        or args.wandb_api_key is None
-        or args.wandb_entity is None
-        or args.wandb_project is None
-    ):
-        arguments.parser.error(
-            "Either use '--log_wandb=False' or provide WANDB params ! \n"
-            + f"BASE_URL: {args.wandb_base_url}, API_KEY: {args.wandb_api_key}, ENTITY: {args.wandb_entity}"
-            + f"PROJECT: {args.wandb_project}"
-        )
+    # if (
+    #     args.wandb_base_url is None
+    #     or args.wandb_api_key is None
+    #     or args.wandb_entity is None
+    #     or args.wandb_project is None
+    # ):
+    #     arguments.parser.error(
+    #         "Either use '--log_wandb=False' or provide WANDB params ! \n"
+    #         + f"BASE_URL: {args.wandb_base_url}, API_KEY: {args.wandb_api_key}, ENTITY: {args.wandb_entity}"
+    #         + f"PROJECT: {args.wandb_project}"
+    #     )
 
-    os.environ["WANDB_BASE_URL"] = args.wandb_base_url
-    os.environ["WANDB_API_KEY"] = args.wandb_api_key
-    os.environ["WANDB_START_METHOD"] = "thread"
+    # Setup wandb
+    with open("wandb_info.txt") as file:
+        lines = [line.rstrip() for line in file]
+        # os.environ["WANDB_BASE_URL"] = lines[0]
+        os.environ["WANDB_API_KEY"] = lines[1]
+        os.environ["WANDB_START_METHOD"] = "thread"
+        wandb_group = args.xpid[:-2]
+        wandb_project = "OfflineRLBenchmark"
+        wandb_entity = lines[2]
+
     wandb.init(
-        project=args.wandb_project,
-        entity=args.wandb_entity,
+        project=wandb_project,
+        entity=wandb_entity,
         config=args,
         name=args.xpid,
-        tags=["vary_n_frames"],
+        tags=[args.algo, args.env_name],
         group=args.xpid[:-2],
     )
 

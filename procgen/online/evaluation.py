@@ -7,25 +7,19 @@
 import torch
 import torch.nn as nn
 
-from online.behavior_policies.envs import make_venv
+from control_illustrative_env import ControlIllustrativeVenv
+from env_util import make_vec_env
 
 
 def evaluate(args, model: nn.Module, device, num_episodes=10):
     model.eval()
 
     # Sample Levels From the Full Distribution
-    eval_envs = make_venv(
-        num_envs=1,
-        env_name=args.env_name,
+    eval_envs = ControlIllustrativeVenv(
+        n_envs=1,
         device=device,
-        **{
-            "num_levels": 200,
-            "start_level": 0,
-            "distribution_mode": args.distribution_mode,
-            "ret_normalization": False,
-            "obs_normalization": True,
-        },
     )
+    # eval_envs = make_vec_env("Pendulum-v0", 1, device='cuda')
 
     eval_episode_rewards = []
     obs = eval_envs.reset()

@@ -70,6 +70,8 @@ class BehavioralCloning:
         :param observations: the observations for the environment
         :param actions: the actions for the environment
         """
+        actions = actions.long()
+        
         # squeeze actions to [batch_size] if they are [batch_size, 1]
         if len(actions.shape) == 2:
             actions = actions.squeeze(dim=1)
@@ -179,6 +181,8 @@ class BehavioralCloningContinuous:
         :param observations: the observations for the environment
         :param actions: the actions for the environment
         """
+        actions = actions.float()
+
         # squeeze actions to [batch_size] if they are [batch_size, 1]
         if len(actions.shape) == 2:
             actions = actions.squeeze(dim=1)

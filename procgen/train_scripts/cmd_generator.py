@@ -40,8 +40,20 @@ def generate_command(params: Dict[str, any], newlines: bool, xpid_generator, alg
         params["xpid"] = xpid_generator(params, algo) + f"_{params['xpid']}"
 
     separator = " \\\n" if newlines else " "
-    header = f"python -m {args.module_name}"
-    cmd = [header] + [f"--{k}={vi}" for k, v in params.items() for vi in (v if isinstance(v, list) else [v])]
+    # header = f"python -m {args.module_name}"
+    # cmd = [header] + [f"--{k}={vi}" for k, v in params.items() for vi in (v if isinstance(v, list) else [v])]
+    cmd = [f"python -m {args.module_name}"]
+    for k,v in params.items():
+        if isinstance(v, list):
+            cmd_str = ""
+            for i, vi in enumerate(v):
+                if i == 0:
+                    cmd_str += f"--{k} {vi}"
+                else:
+                    cmd_str += f" {vi}"
+            cmd.append(cmd_str)
+        else:
+            cmd.append(f"--{k}={v}")
     return separator.join(cmd)
 
 

@@ -8,7 +8,7 @@ import argparse
 from utils.utils import str2bool
 
 parser = argparse.ArgumentParser(description="Train offline agents")
-parser.add_argument("--algo", type=str, default="bc", choices=["bc", "bc_cont", "bc_n", "bc_n_cont", "cql", "dt", "bct", "bcq", "offlinedqn", "iql", "xql"], help="Algorithm to train")
+parser.add_argument("--algo", type=str, default="bc", choices=["bc", "bc_cont", "bc_n", "bc_n_cont", "bc_n_cont_p", "cql", "dt", "bct", "bcq", "offlinedqn", "iql", "xql"], help="Algorithm to train")
 parser.add_argument("--dataset", type=str, default="data/dataset.hdf5", help="Path to dataset")
 parser.add_argument("--percentile", type=float, default=1.0, help="percentile for top% training")
 parser.add_argument("--dataset_size", type=int, default=1000000, help="Size of dataset")
@@ -27,6 +27,7 @@ parser.add_argument("--xpid", type=str, default=None, help="experiment name")
 parser.add_argument("--eval_eps", type=float, default=0.001, help="epsilon for evaluation")
 parser.add_argument("--channels", nargs='+', type=int, default=64, help="the hidden layer sizes of the fully connected network")
 parser.add_argument("--normalize_obs", type=str2bool, default=False, help="whether to  normalize the image observation by dividing by 255")
+parser.add_argument("--activation", type=str, default='relu', help="What activation function to use in the neural network")
 
 # Environment
 parser.add_argument("--env_name", type=str, default="bigfish", help="Name of environment")
@@ -71,3 +72,4 @@ parser.add_argument("--threshold_metric", type=str, default="median", choices=["
 
 # BC-N
 parser.add_argument("--ensemble_size", type=int, default=1, help="size of the ensemble")
+parser.add_argument("--cycle_priors", type=str2bool, default=True, help="whether to subtract the networks own prior or the prior of the next network in the ensemble")

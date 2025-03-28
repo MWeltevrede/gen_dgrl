@@ -14,9 +14,12 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.distributions import Normal
 
 from online.behavior_policies.distributions import Categorical
 from utils.utils import init
+
+import numpy as np
 
 init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.constant_(x, 0))
 
@@ -312,6 +315,31 @@ class NonlinearOrderClassifier(nn.Module):
     def forward(self, emb):
         x = self.main(emb)
         return x
+    
+
+class IllustrativeEncoder(NNBase):
+    def __init__(self, observation_space, output_space, hidden_size=64, channels=[128, 64], use_actor_linear=True, normalize_obs=True):
+        super().__init__(hidden_size)
+        flattened_dim = np.prod(observation_space.shape)
+        self.normalize_obs = normalize_obs
+
+        self.linears = []
+        self.linears.append(Flatten())
+        self.linears.append(nn.Linear(flattened_dim, channels[0]))
+        self.linears.append(nn.Tanh())
+        for i in range(len(channels) - 1):
+            self.linears.append(nn.Linear(channels[i], channels[i + 1]))
+            self.linears.append(nn.Tanh())
+        self.linears.append(nn.Linear(channels[-1], hidden_size))
+        self.linears.append(nn.Tanh())
+        self.linears.append(nn.Linear(hidden_size, output_space))
+        self.linears = nn.Sequential(*self.linears)
+
+
+    def forward(self, x):
+        if self.normalize_obs:
+            x = x / 255.
+        return self.linears(x)
 
 
 class PPOnet(nn.Module):
@@ -319,43 +347,77 @@ class PPOnet(nn.Module):
     PPO netowrk
     """
 
-    def __init__(self, obs_shape, num_actions, base_kwargs=None):
+    def __init__(self, obs_shape, action_space, initial_sd=.25, base_kwargs=None):
         super(PPOnet, self).__init__()
 
         if base_kwargs is None:
             base_kwargs = {}
 
-        base = ResNetBase
+        base = IllustrativeEncoder
+        self.action_shape = action_space.shape[0]
 
-        self.base = base(obs_shape[0], **base_kwargs)
-        self.dist = Categorical(self.base.output_size, num_actions)
+        self.actor = base(obs_shape, 2*self.action_shape, **base_kwargs)
+        self.initial_sd = torch.as_tensor(initial_sd, dtype=torch.float32).detach()
+        self.critic = base(obs_shape, 1, **base_kwargs)
+
+        with torch.no_grad():
+            # force the weights of the last layer to be really small
+            # this initializes the actions to be observation independent with a value of 0
+            # which is a nice unbiased starting point for the policy network
+            self.actor.linears[-1].weight *= 1/100
+
+        self.low = torch.as_tensor(action_space.low).float()
+        self.high = torch.as_tensor(action_space.high).float()
 
     def forward(self, inputs):
         raise NotImplementedError
+    
+    def set_device(self, device):
+        self.actor.to(device)
+        self.critic.to(device)
+        self.initial_sd.to(device)
+        self.low = self.low.to(device)
+        self.high = self.high.to(device)
+
+    def bound(self, x):
+        # turn x from range [-infty, infty] to [self.low, self.high]
+        x = torch.tanh(x)
+        return ((x+1)/2.)*(self.high - self.low) + self.low
+    
+    def unbound(self, x):
+        # turn x from range [self.low, self.high] to [-infty, infty]
+        x = 2.* (x - self.low) / (self.high - self.low)
+        x = x - 1
+        x = torch.atanh(x)
+        return x
 
     def act(self, inputs, deterministic=False):
-        value, actor_features = self.base(inputs)
-        dist = self.dist(actor_features)
+        value, actor_features = self.critic(inputs), self.actor(inputs)
+        sd_constant = self.initial_sd + torch.log(1 - torch.exp(-self.initial_sd))
+        dist = Normal(actor_features[:, :self.action_shape], F.softplus(actor_features[:, self.action_shape:] + sd_constant))
 
         if deterministic:
-            action = dist.mode()
+            unbound_action = dist.mode()
         else:
-            action = dist.sample()
+            unbound_action = dist.sample()
 
-        action_log_probs = dist.log_probs(action)
+        action = self.bound(unbound_action)
+
+        action_log_probs = dist.log_prob(unbound_action).sum(-1, keepdim=True)
         dist_entropy = dist.entropy().mean()
 
         return value, action, action_log_probs
 
     def get_value(self, inputs):
-        value, _ = self.base(inputs)
+        value = self.critic(inputs)
         return value
 
     def evaluate_actions(self, inputs, action):
-        value, actor_features = self.base(inputs)
-        dist = self.dist(actor_features)
+        value, actor_features = self.critic(inputs), self.actor(inputs)
+        sd_constant = self.initial_sd + torch.log(1 - torch.exp(-self.initial_sd))
+        dist = Normal(actor_features[:, :self.action_shape], F.softplus(actor_features[:, self.action_shape:] + sd_constant))
 
-        action_log_probs = dist.log_probs(action)
+        action_log_probs = dist.log_prob(self.unbound(action)).sum(-1, keepdim=True)
         dist_entropy = dist.entropy().mean()
 
         return value, action_log_probs, dist_entropy
