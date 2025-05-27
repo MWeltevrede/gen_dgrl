@@ -1,34 +1,34 @@
 {
     "grid": {
         "algo": [
-            "bc_n_cont_p"
+            "bc_n_cont"
         ],
         "env_name": [
-            "control_illustrative"
+            "control_illustrative_base_c2", "control_illustrative_base_c8"
         ],
         "dataset": [
             "datasets"
         ],
         "lr": [
-            1e-6
+            1e-4
         ],
         "batch_size": [
             6
         ],
         "dataset_size":[
-            108
+            400
         ],
         "epochs": [
-            1000
+            500
         ],
         "agent_model": [
             "illustrative_ensemble"
         ],
         "hidden_size": [
-            1024
+            32
         ],
         "channels": [
-            [2048, 2048]
+            [64, 64]
         ],
         "normalize_obs": [
             false
@@ -52,19 +52,22 @@
             0
         ],
         "ckpt_freq":[
-            100
+            500
         ],
         "early_stop": [
             false
         ],
         "ensemble_size":[
-            2
+            1
         ],
         "cycle_priors":[
-            true
+            false
         ],
         "activation":[
             "relu"
+        ],
+        "seed":[
+            0
         ]
     }
 }

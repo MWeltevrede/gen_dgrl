@@ -144,8 +144,8 @@ class BehavioralCloningEnsembleContinuous:
         self.lr = lr
         self.hidden_size = hidden_size
         self.ensemble_size = ensemble_size
-        self.low = 100 * torch.as_tensor(action_space.low).float()
-        self.high = 100 * torch.as_tensor(action_space.high).float()
+        self.low = torch.as_tensor(action_space.low).float()
+        self.high = torch.as_tensor(action_space.high).float()
 
         self.model_base = AGENT_CLASSES[agent_model](observation_space, action_space.shape[0], hidden_size, use_actor_linear=True, ensemble_size=ensemble_size, **kwargs)
         self.optimizer = torch.optim.Adam(self.model_base.parameters(), lr=self.lr)
