@@ -226,10 +226,11 @@ class PPOResNetBaseEncoder(NNBase):
     Residual Network from PPO implementation -> 1M parameters
     """
 
-    def __init__(self, observation_space, action_space=15, hidden_size=256, channels=[16, 32, 32], use_actor_linear=True):
+    def __init__(self, observation_space, action_space=15, hidden_size=256, channels=[16, 32, 32], use_actor_linear=True, normalize_obs=True):
         super(PPOResNetBaseEncoder, self).__init__(hidden_size)
         self.observation_space = observation_space
         self.use_actor_linear = use_actor_linear
+        self.normalize_obs = normalize_obs
 
         self.layer1 = self._make_layer(observation_space.shape[-1], channels[0])
         self.layer2 = self._make_layer(channels[0], channels[1])
@@ -259,6 +260,9 @@ class PPOResNetBaseEncoder(NNBase):
 
     def forward(self, inputs):
         x = inputs
+
+        if self.normalize_obs:
+            x = x / 255.
 
         x = self.layer1(x)
         x = self.layer2(x)
