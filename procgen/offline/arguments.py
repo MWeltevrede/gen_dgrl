@@ -13,6 +13,7 @@ parser.add_argument("--dataset", type=str, default="data/dataset.hdf5", help="Pa
 parser.add_argument("--percentile", type=float, default=1.0, help="percentile for top% training")
 parser.add_argument("--dataset_size", type=int, default=1000000, help="Size of dataset")
 parser.add_argument("--early_stop", type=str2bool, default=False, help="Use early stopping")
+parser.add_argument("--wandb_tags", type=str, nargs='+', default=None, help="wandb tags")
 
 # Model
 parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate")

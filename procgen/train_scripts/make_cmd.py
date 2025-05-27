@@ -119,6 +119,7 @@ def parse_args():
     parser.add_argument("--wandb_api_key", type=str, default=None, help="wandb api key")
     parser.add_argument("--wandb_entity", type=str, default=None, help="wandb entity")
     parser.add_argument("--wandb_project", type=str, default=None, help="wandb project name")
+    parser.add_argument("--wandb_tags", type=str, nargs='+', default=None, help="wandb tags")
 
     return parser.parse_args()
 
@@ -200,6 +201,8 @@ if __name__ == "__main__":
         defaults["wandb_api_key"] = args.wandb_api_key
     if args.wandb_entity:
         defaults["wandb_entity"] = args.wandb_entity
+    if args.wandb_tags:
+        defaults["wandb_tags"] = args.wandb_tags
 
     # Generate all parameter combinations within grid, using defaults for fixed params
     config = json.load(
