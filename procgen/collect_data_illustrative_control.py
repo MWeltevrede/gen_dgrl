@@ -8,6 +8,13 @@ import json
 
 from stable_baselines3 import SAC
 
+def optimal_policy(step):
+    # a handcrafted (basically) optimal policy
+    if step < 12:
+        return [-2, 2]
+    else:
+        return [2, 2]
+
 def generate_dataset(tasks, dataset_name, model):
     env = gym.make('ControlIllustrativeCMDP-v0', tasks=tasks)
     env.seed(88)
@@ -59,126 +66,91 @@ def generate_dataset(tasks, dataset_name, model):
                 ep_actions = []
         i += 1
 
-    print(total_steps)
+    return total_steps
 
-#### Fixed Pose
-# # C4 Rotations
-# train_tasks = [(45,-45,0), (45,-45,90), (45,-45,180), (45,-45,270)]
+# #### Fixed Pose
+# # SO(2) subgroups
+# c2_train_tasks = [(45,-45,0), (45,-45,180)]
+# c4_train_tasks = [(45,-45,0), (45,-45,90), (45,-45,180), (45,-45,270)]
+# c8_train_tasks = [(45,-45,0), (45,-45,45), (45,-45,90), (45,-45,135), (45,-45,180), (45,-45,225), (45,-45,270), (45,-45,315)]
 
-# # Random Rotations
-# train_tasks = [(45,-45,-6), (45,-45,94), (45,-45,171), (45,-45,289)]
+# register(
+#      id="ControlIllustrativeCMDP-v0",
+#      entry_point="control_illustrative_env:ControlIllustrativeCMDP",
+# )
 
-# test_tasks = [(45,-45,-11), (45,-45,11), (45,-45,65), (45,-45,99), (45,-45,167), (45,-45,204), (45,-45,259), (45,-45,325)]
+# model = SAC.load("sac_control_illustrative_full")
+
+# sizec2 = generate_dataset(c2_train_tasks, f'control_illustrative_base_c2', model)
+# sizec4 = generate_dataset(c4_train_tasks, f'control_illustrative_base_c4', model)
+# sizec8 = generate_dataset(c8_train_tasks, f'control_illustrative_base_c8', model)
+
+# with open('datasets/dataset_sizes_bases.txt', 'w') as file:
+#     print(f"base_c2: {sizec2}", file=file)
+#     print(f"base_c4: {sizec4}", file=file)
+#     print(f"base_c8: {sizec8}", file=file)
 
 
-#### Random Pose
-# # Base tasks: same rotations as the random rotations above, but with randomised starting poses for the robot arm
-# train_tasks = [
-#     (248,77,-6), (105,213,94), (152,290,171), (358,43,289),     # unique poses
-# ]
 
-# # Now we perform 'data augmentation' by enumerating all poses for all rotations for the base set of tasks above
-# train_tasks = [
-#     (248,77,-6), (105,213,94), (152,290,171), (358,43,289),     # unique poses
-#     (105,213,-6), (152,290,94), (358,43,171), (248,77,289),     # duplicate all the poses in all tasks
-#     (152,290,-6), (358,43,94), (248,77,171), (105,213,289),     # duplicate all the poses in all tasks
-#     (358,43,-6), (248,77,94), (105,213,171), (152,290,289),     # duplicate all the poses in all tasks
-# ]
 
-# # Now we imitate random pure exploration at the start of each episode (ExploreGo)
-# # by adding three random poses to each of the base tasks
-# train_tasks = [
-#     (248,77,-6), (105,213,94), (152,290,171), (358,43,289),     # unique poses
-#     (288,75,-6), (213,17,94), (56,215,171), (357,274,289),     # random poses in all tasks
-#     (40,86,-6), (305,136,94), (187,91,171), (101,240,289),     # random poses in all tasks
-#     (129,254,-6), (117,352,94), (60,167,171), (258,214,289),     # random poses in all tasks
-# ]
 
-# # Now we add completely new (unreachable) tasks by randomly sampling from the full distribution
-# train_tasks = [
-#     (248,77,-6), (105,213,94), (152,290,171), (358,43,289),     # unique poses
-#     (288,75,20), (213,17,305), (56,215,269), (357,274,293),     # random poses and rotations in all tasks
-#     (40,86,185), (305,136,2), (187,91,350), (101,240,101),     # random poses and rotations in all tasks
-#     (129,254,22), (117,352,57), (60,167,118), (258,214,230),     # random poses and rotations in all tasks
-#     (187,2,207), (337,91,143), (197,146 ,54), (138,293,200),     # random poses and rotations in all tasks
-#     (38,195,284), (78,259,1), (97,139,19), (109,53,261),     # random poses and rotations in all tasks
-#     (60,217,235), (39,252,162), (304,307,283), (264,216,240),     # random poses and rotations in all tasks
-#     (52,191,186), (164,179,149), (80,13,106), (124,95,265),     # random poses and rotations in all tasks
-# ]
 
-#### Randomly generated
-set_id = 4
-np.random.seed(set_id)
+### Randomly generated
+for set_id in range(20):
+    # set_id = 1
+    np.random.seed(set_id)
 
-num_base_tasks = 8
-base_tasks = np.random.randint(0, 360, (num_base_tasks, 3))
+    num_base_tasks = 4
+    base_tasks = np.array([[np.random.randint(0, 360),np.random.randint(0, 360),0], [np.random.randint(0, 360),np.random.randint(0, 360),90], [np.random.randint(0, 360),np.random.randint(0, 360),180], [np.random.randint(0, 360),np.random.randint(0, 360),270]], dtype=np.int64)
+    print(base_tasks.shape)
 
-da_expl_tasks = []
-for i in range(num_base_tasks):
-    a = copy.deepcopy(base_tasks)
-    a[:, -1] = np.roll(base_tasks[:, -1], i+1)
-    da_expl_tasks.append(a)
-da_expl_tasks = np.concatenate(da_expl_tasks, axis=0)
+    base_da_tasks = []
+    for i in range(num_base_tasks):
+        a = copy.deepcopy(base_tasks)
+        a[:, -1] = np.roll(base_tasks[:, -1], i+1)
+        base_da_tasks.append(a)
+    base_da_tasks = np.concatenate(base_da_tasks, axis=0)
 
-random_expl_tasks = []
-for i in range(num_base_tasks):
-    a = np.random.randint(0, 360, (num_base_tasks, 3))
-    a[:, -1] = copy.deepcopy(base_tasks[:, -1])
-    random_expl_tasks.append(a)
-random_expl_tasks = np.concatenate(random_expl_tasks, axis=0)
+    base_random_tasks = []
+    for i in range(num_base_tasks):
+        a = np.random.randint(0, 360, (num_base_tasks, 3))
+        a[:, -1] = copy.deepcopy(base_tasks[:, -1])
+        base_random_tasks.append(a)
+    base_random_tasks = np.concatenate(base_random_tasks, axis=0)
 
-unreachablex8_tasks = [copy.deepcopy(base_tasks)]
-for i in range(num_base_tasks-1):
-    a = np.random.randint(0, 360, (num_base_tasks, 3))
-    unreachablex8_tasks.append(a)
-unreachablex8_tasks = np.concatenate(unreachablex8_tasks, axis=0)
+    # unreachablex8_tasks = [copy.deepcopy(base_tasks)]
+    # for i in range(num_base_tasks-1):
+    #     a = np.random.randint(0, 360, (num_base_tasks, 3))
+    #     unreachablex8_tasks.append(a)
+    # unreachablex8_tasks = np.concatenate(unreachablex8_tasks, axis=0)
 
-unreachablex4_tasks = [copy.deepcopy(base_tasks)]
-for i in range(3):
-    a = np.random.randint(0, 360, (num_base_tasks, 3))
-    unreachablex4_tasks.append(a)
-unreachablex4_tasks = np.concatenate(unreachablex4_tasks, axis=0)
+    # unreachablex4_tasks = [copy.deepcopy(base_tasks)]
+    # for i in range(3):
+    #     a = np.random.randint(0, 360, (num_base_tasks, 3))
+    #     unreachablex4_tasks.append(a)
+    # unreachablex4_tasks = np.concatenate(unreachablex4_tasks, axis=0)
 
-unreachablex2_tasks = [copy.deepcopy(base_tasks)]
-a = np.random.randint(0, 360, (num_base_tasks, 3))
-unreachablex2_tasks.append(a)
-unreachablex2_tasks = np.concatenate(unreachablex2_tasks, axis=0)
+    # unreachablex2_tasks = [copy.deepcopy(base_tasks)]
+    # a = np.random.randint(0, 360, (num_base_tasks, 3))
+    # unreachablex2_tasks.append(a)
+    # unreachablex2_tasks = np.concatenate(unreachablex2_tasks, axis=0)
 
-with open(f"datasets/task_sets_{set_id}.json", 'r') as file:
-    task_sets_dict = json.load(file)
-    assert task_sets_dict['base_tasks'] == base_tasks.tolist()
-    assert task_sets_dict['da_expl_tasks'] == da_expl_tasks.tolist()
-    assert task_sets_dict['random_expl_tasks'] == random_expl_tasks.tolist()
-    assert task_sets_dict['unreachable_tasks'] == unreachablex8_tasks.tolist()
-    del task_sets_dict['unreachable_tasks']
-    task_sets_dict['unreachablex8_tasks'] = unreachablex8_tasks.tolist()
-    task_sets_dict['unreachablex4_tasks'] = unreachablex4_tasks.tolist()
-    task_sets_dict['unreachablex2_tasks'] = unreachablex2_tasks.tolist()
 
-test_tasks = []     # full distribution of poses and rotations
+    register(
+        id="ControlIllustrativeCMDP-v0",
+        entry_point="control_illustrative_env:ControlIllustrativeCMDP",
+    )
+        
+    model = SAC.load("sac_control_illustrative_full")
 
-register(
-     id="ControlIllustrativeCMDP-v0",
-     entry_point="control_illustrative_env:ControlIllustrativeCMDP",
-)
+    base_size = generate_dataset(base_tasks, f'control_illustrative_base_{set_id}', model)
+    da_size = generate_dataset(base_da_tasks, f'control_illustrative_base_da_{set_id}', model)
+    random_size = generate_dataset(base_random_tasks, f'control_illustrative_base_random_{set_id}', model)
+    with open(f'datasets/dataset_sizes_random_poses_{set_id}.txt', 'w') as file:
+        print(f"base: {base_size}", file=file)
+        print(f"base + da: {da_size}", file=file)
+        print(f"base + random: {random_size}", file=file)
 
-def optimal_policy(step):
-    # a handcrafted (basically) optimal policy
-    if step < 12:
-        return [-2, 2]
-    else:
-        return [2, 2]
-    
-model = SAC.load("sac_control_illustrative_full")
-
-# generate_dataset(base_tasks, f'control_illustrative_base_{set_id}', model)
-# generate_dataset(da_expl_tasks, f'control_illustrative_da_expl_{set_id}', model)
-# generate_dataset(random_expl_tasks, f'control_illustrative_random_expl_{set_id}', model)
-generate_dataset(unreachablex8_tasks, f'control_illustrative_unreachablex8_{set_id}', model)
-generate_dataset(unreachablex4_tasks, f'control_illustrative_unreachablex4_{set_id}', model)
-generate_dataset(unreachablex2_tasks, f'control_illustrative_unreachablex2_{set_id}', model)
-
-# save tasks
-with open(f"datasets/task_sets_{set_id}.json", 'w') as file:
-    # json.dump({'base_tasks':base_tasks.tolist(), 'da_expl_tasks':da_expl_tasks.tolist(), 'random_expl_tasks':random_expl_tasks.tolist(), 'unreachable_tasks':unreachable_tasks.tolist()}, file)
-    json.dump(task_sets_dict, file)
+    # save tasks
+    with open(f"datasets/task_sets_{set_id}.json", 'w') as file:
+        json.dump({'base':base_tasks.tolist(), 'base + da':base_da_tasks.tolist(), 'base + random':base_random_tasks.tolist()}, file)
