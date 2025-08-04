@@ -67,6 +67,8 @@ class RolloutStorage(object):
         if self._is_discrete():
             self._action_buffer = self._action_buffer.long()
 
+        self._probs_buffer = torch.zeros(size=(self.capacity, self.n_envs, self.action_space.n))
+
         self._level_seeds_buffer = np.zeros(shape=(self.n_envs,), dtype=np.int32)
 
         # Index
@@ -82,6 +84,7 @@ class RolloutStorage(object):
         self._reward_buffer.zero_()
         self._done_buffer.zero_()
         self._action_buffer.zero_()
+        self._probs_buffer.zero_()
         self._level_seeds_buffer = np.zeros(shape=(self.n_envs,), dtype=np.int32)
 
         # Index
@@ -141,8 +144,9 @@ class RolloutStorage(object):
         self._reward_buffer = self._reward_buffer.to(device)
         self._done_buffer = self._done_buffer.to(device)
         self._action_buffer = self._action_buffer.to(device)
+        self._probs_buffer = self._probs_buffer.to(device)
 
-    def insert(self, obs, actions, rewards, dones, infos=[]) -> None:
+    def insert(self, obs, actions, probs, rewards, dones, infos=[]) -> None:
         r"""
         Insert tuple of (observations, actions, rewards, dones) into corresponding buffers.
         An 's' at the end of each parameter indicates that the environments can be vectorized.
@@ -170,6 +174,7 @@ class RolloutStorage(object):
 
         self._obs_buffer[self._idx + 1].copy_(obs)
         self._action_buffer[self._idx].copy_(actions)
+        self._probs_buffer[self._idx].copy_(probs)
         self._reward_buffer[self._idx].copy_(rewards)
         self._done_buffer[self._idx] = torch.tensor(dones)
         # When done == True (episode is completed), 'level_seed' in info will be the new seed,
@@ -189,6 +194,9 @@ class RolloutStorage(object):
                 )
                 self.ongoing_episodes[env_idx][DatasetItemType.ACTIONS.value].append(
                     actions[env_idx].detach().cpu().numpy()
+                )
+                self.ongoing_episodes[env_idx][DatasetItemType.PROBS.value].append(
+                    probs[env_idx].detach().cpu().numpy()
                 )
                 self.ongoing_episodes[env_idx][DatasetItemType.REWARDS.value].append(
                     rewards[env_idx].detach().cpu().numpy()

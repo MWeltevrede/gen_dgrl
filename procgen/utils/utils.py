@@ -57,6 +57,7 @@ class DatasetItemType(Enum):
     ACTIONS = "actions"
     REWARDS = "rewards"
     DONES = "dones"
+    PROBS = "probs"
 
 
 def str2bool(v):

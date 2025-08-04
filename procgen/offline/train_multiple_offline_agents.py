@@ -18,7 +18,7 @@ from torch.utils.data import DataLoader
 import wandb
 from offline.agents import _create_agent
 from offline.arguments import parser
-from offline.dataloader import OfflineDataset, OfflineDTDataset
+from offline.dataloader import OfflineDataset, OfflineDTDataset, DistillationDataset
 from offline.test_offline_agent import eval_agent, eval_DT_agent
 from utils.filewriter import FileWriter
 from utils.utils import set_seed
@@ -38,6 +38,16 @@ if args.algo in ["dt", "bct"]:
     extra_config = {"train_data_vocab_size": dataset.vocab_size, "train_data_block_size": dataset._block_size, "max_timesteps": max(dataset._timesteps), "dataset_size": len(dataset)}
     eval_max_return = dataset.get_max_return(multiplier=args.dt_eval_ret)
     print("[DEBUG] Setting max eval return to ", eval_max_return)
+elif args.algo == "distil":
+    dataset = DistillationDataset(
+        capacity=args.dataset_size, episodes_dir_path=os.path.join(args.dataset, args.env_name), percentile=args.percentile
+    )
+    is_tuning = 'train' in args.dataset.split('/')[-1]
+    if is_tuning:
+        val_dataset_path = '/' + '/'.join(args.dataset.split('/')[:-1]) + '/custom_spiderweb_val'
+        val_dataset = DistillationDataset(
+            capacity=args.dataset_size // 3, episodes_dir_path=os.path.join(val_dataset_path, args.env_name), percentile=args.percentile
+        )
 else:
     dataset = OfflineDataset(
         capacity=args.dataset_size, episodes_dir_path=os.path.join(args.dataset, args.env_name), percentile=args.percentile
@@ -68,7 +78,7 @@ for i, id in enumerate(args.agent_ids):
     os.environ["WANDB_START_METHOD"] = "thread"
     wandb_group = base_xpid  # '-'.join(xpid.split('-')[:-2])[:120]
     wandb_project = "OfflineRLBenchmark"
-    with wandb.init(project=wandb_project, entity=lines[2], config=args, name=xpid, group=wandb_group, tags=[args.algo, args.env_name]):
+    with wandb.init(project=wandb_project, entity=lines[2], config=args, name=xpid, group=wandb_group, tags=[args.algo, args.env_name, *args.wandb_tags]):
 
         log_dir = os.path.expandvars(os.path.expanduser(os.path.join(args.save_path, args.env_name)))
         # check if final_model.pt already exists in the log_dir
@@ -87,6 +97,9 @@ for i, id in enumerate(args.agent_ids):
         # logging.getLogger().setLevel(logging.INFO)
 
         dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, pin_memory=pin_dataloader_memory, num_workers=8)
+        if args.algo == "distil":
+            if is_tuning:
+                val_dataloader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True, pin_memory=pin_dataloader_memory, num_workers=8)
 
         # create Procgen env
         env = procgen.ProcgenEnv(num_envs=1, env_name=args.env_name)
@@ -138,6 +151,25 @@ for i, id in enumerate(args.agent_ids):
                     )
                     stats_dict = agent.train_step(observations.float(), actions.long(), rtgs.float(), timesteps.long(), padding_mask.float())
                     epoch_loss += stats_dict["loss"]
+            elif args.algo == "distil":
+                for observations, probs, rewards, next_observations, dones in dataloader:
+                    # if len(actions.shape) == 1:
+                    #     actions = actions.unsqueeze(dim=1)
+                    if len(rewards.shape) == 1:
+                        rewards = rewards.unsqueeze(dim=1)
+                    if len(dones.shape) == 1:
+                        dones = dones.unsqueeze(dim=1)
+                    observations, probs, rewards, next_observations, dones = (
+                        observations.to(device),
+                        probs.to(device),
+                        rewards.to(device),
+                        next_observations.to(device),
+                        dones.to(device),
+                    )
+                    stats_dict = agent.train_step(
+                        observations.float(), probs.float(), rewards.float(), next_observations.float(), dones.float()
+                    )
+                    epoch_loss += stats_dict["loss"]
             else:
                 for observations, actions, rewards, next_observations, dones in dataloader:
                     if len(actions.shape) == 1:
@@ -161,6 +193,31 @@ for i, id in enumerate(args.agent_ids):
 
             # evaluate the agent on procgen environment
             if epoch % args.eval_freq == 0:
+                # validation loss in case of distillation:
+                if args.algo == "distil":
+                    if is_tuning:
+                        val_loss = 0
+                        for observations, probs, rewards, next_observations, dones in val_dataloader:
+                            # if len(actions.shape) == 1:
+                            #     actions = actions.unsqueeze(dim=1)
+                            if len(rewards.shape) == 1:
+                                rewards = rewards.unsqueeze(dim=1)
+                            if len(dones.shape) == 1:
+                                dones = dones.unsqueeze(dim=1)
+                            observations, probs, rewards, next_observations, dones = (
+                                observations.to(device),
+                                probs.to(device),
+                                rewards.to(device),
+                                next_observations.to(device),
+                                dones.to(device),
+                            )
+                            val_stats_dict = agent.get_loss(
+                                observations.float(), probs.float(), rewards.float(), next_observations.float(), dones.float()
+                            )
+                            val_loss += val_stats_dict["loss"]
+                        val_loss /= len(val_dataloader)
+                        print(f"Validation loss: {val_loss}")
+
                 inf_start_time = time.time()
                 if args.algo in ["dt", "bct"]:
                     test_mean_perf = eval_DT_agent(
@@ -236,6 +293,9 @@ for i, id in enumerate(args.agent_ids):
                             "val_rets_mean": val_mean_perf,
                         }
                     )
+                    if args.algo == 'distil':
+                        if is_tuning:
+                            stats_dict["val_loss"] = val_loss
                     log_stats(stats_dict)
                         
                 if args.early_stop:

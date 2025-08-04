@@ -18,7 +18,7 @@ from torch.utils.data import DataLoader
 import wandb
 from offline.agents import _create_agent
 from offline.arguments import parser
-from offline.dataloader import OfflineDataset, OfflineDTDataset
+from offline.dataloader import OfflineDataset, OfflineDTDataset, DistillationDataset
 from offline.test_offline_agent import eval_agent, eval_DT_agent
 from utils.filewriter import FileWriter
 from utils.utils import set_seed
@@ -37,6 +37,15 @@ set_seed(args.seed)
 if args.xpid is None:
     args.xpid = "lr-%s" % time.strftime("%Y%m%d-%H%M%S")
 
+# Initialize agent
+extra_config = None
+# create Procgen env
+env = procgen.ProcgenEnv(num_envs=1, env_name=args.env_name)
+env = VecExtractDictObs(env, "rgb")
+agent = _create_agent(args, env=env, extra_config=extra_config)
+agent.set_device(device)
+print("Model Created!")
+
 # Setup wandb and offline logging
 with open("wandb_info.txt") as file:
     lines = [line.rstrip() for line in file]
@@ -45,7 +54,7 @@ with open("wandb_info.txt") as file:
     os.environ["WANDB_START_METHOD"] = "thread"
     wandb_group = args.xpid[:-2][:126]  # '-'.join(args.xpid.split('-')[:-2])[:120]
     wandb_project = "OfflineRLBenchmark"
-    wandb.init(project=wandb_project, entity=lines[2], config=args, name=args.xpid, group=wandb_group, tags=[args.algo, args.env_name])
+    wandb.init(project=wandb_project, entity=lines[2], config=args, name=args.xpid, group=wandb_group, tags=[args.algo, args.env_name, *args.wandb_tags])
 
 log_dir = os.path.expandvars(os.path.expanduser(os.path.join(args.save_path, args.env_name)))
 # check if final_model.pt already exists in the log_dir
@@ -74,6 +83,10 @@ if args.algo in ["dt", "bct"]:
     extra_config = {"train_data_vocab_size": dataset.vocab_size, "train_data_block_size": dataset._block_size, "max_timesteps": max(dataset._timesteps), "dataset_size": len(dataset)}
     eval_max_return = dataset.get_max_return(multiplier=args.dt_eval_ret)
     print("[DEBUG] Setting max eval return to ", eval_max_return)
+elif args.algo == "distil":
+    dataset = DistillationDataset(
+        capacity=args.dataset_size, episodes_dir_path=os.path.join(args.dataset, args.env_name), percentile=args.percentile
+    )
 else:
     dataset = OfflineDataset(
         capacity=args.dataset_size, episodes_dir_path=os.path.join(args.dataset, args.env_name), percentile=args.percentile
@@ -89,10 +102,10 @@ env = VecExtractDictObs(env, "rgb")
 curr_epochs = 0
 last_logged_update_count_at_restart = -1
 
-# Initialize agent
-agent = _create_agent(args, env=env, extra_config=extra_config)
-agent.set_device(device)
-print("Model Created!")
+# # Initialize agent
+# agent = _create_agent(args, env=env, extra_config=extra_config)
+# agent.set_device(device)
+# print("Model Created!")
 
 # wandb watch
 # wandb.watch(agent.model_actor, log_freq=100)
@@ -131,6 +144,25 @@ for epoch in range(curr_epochs, args.epochs):
                 padding_mask.to(device)
             )
             stats_dict = agent.train_step(observations.float(), actions.long(), rtgs.float(), timesteps.long(), padding_mask.float())
+            epoch_loss += stats_dict["loss"]
+    elif args.algo == "distil":
+        for observations, probs, rewards, next_observations, dones in dataloader:
+            # if len(actions.shape) == 1:
+            #     actions = actions.unsqueeze(dim=1)
+            if len(rewards.shape) == 1:
+                rewards = rewards.unsqueeze(dim=1)
+            if len(dones.shape) == 1:
+                dones = dones.unsqueeze(dim=1)
+            observations, probs, rewards, next_observations, dones = (
+                observations.to(device),
+                probs.to(device),
+                rewards.to(device),
+                next_observations.to(device),
+                dones.to(device),
+            )
+            stats_dict = agent.train_step(
+                observations.float(), probs.float(), rewards.float(), next_observations.float(), dones.float()
+            )
             epoch_loss += stats_dict["loss"]
     else:
         for observations, actions, rewards, next_observations, dones in dataloader:

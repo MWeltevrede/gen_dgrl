@@ -14,12 +14,13 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import math
 
 from utils.utils import init
 
-init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.constant_(x, 0))
+# init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.constant_(x, 0))
 
-init_relu_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.constant_(x, 0), nn.init.calculate_gain("relu"))
+# init_relu_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.constant_(x, 0), nn.init.calculate_gain("relu"))
 
 def apply_init_(modules):
     """
@@ -27,9 +28,12 @@ def apply_init_(modules):
     """
     for m in modules:
         if isinstance(m, nn.Conv2d):
-            nn.init.xavier_uniform_(m.weight)
+            nn.init.kaiming_uniform_(m.weight, a=math.sqrt(5))
             if m.bias is not None:
-                nn.init.constant_(m.bias, 0)
+                fan_in, _ = nn.init._calculate_fan_in_and_fan_out(m.weight)
+                if fan_in != 0:
+                    bound = 1 / math.sqrt(fan_in)
+                    nn.init.uniform_(m.bias, -bound, bound)
         elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
             nn.init.constant_(m.weight, 1)
             if m.bias is not None:
@@ -226,7 +230,7 @@ class PPOResNetBaseEncoder(NNBase):
     Residual Network from PPO implementation -> 1M parameters
     """
 
-    def __init__(self, observation_space, action_space=15, hidden_size=256, channels=[16, 32, 32], use_actor_linear=True, normalize_obs=True):
+    def __init__(self, observation_space, action_space=15, hidden_size=256, channels=[16, 32, 32], use_actor_linear=True, normalize_obs=True, policy_gain=1.0, init_scheme='kaiming_uniform'):
         super(PPOResNetBaseEncoder, self).__init__(hidden_size)
         self.observation_space = observation_space
         self.use_actor_linear = use_actor_linear
@@ -239,13 +243,27 @@ class PPOResNetBaseEncoder(NNBase):
         self.flatten = Flatten()
         self.relu = nn.ReLU()
 
-        self.fc = init_relu_(nn.Linear(2048, hidden_size))
+        self.fc = nn.Linear(2048, hidden_size)
         if self.use_actor_linear:
-            self.actor_linear = init_(nn.Linear(hidden_size, action_space))
+            self.actor_linear = nn.Linear(hidden_size, action_space)
 
         apply_init_(self.modules())
 
         self.train()
+
+    def _init_weights(self, modules):
+        for m in modules:
+            if isinstance(m, (nn.Conv2d, nn.Linear)):
+                if hasattr(m, "bias") and isinstance(m.bias, nn.parameter.Parameter):
+                    fan_in, _ = torch.nn.init._calculate_fan_in_and_fan_out(m.weight)
+                    if fan_in != 0:
+                        bound = 1 / math.sqrt(fan_in)
+                        torch.nn.init.uniform_(m.bias, -bound, bound)
+                
+            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
+                nn.init.constant_(m.weight, 1)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
 
     def _make_layer(self, in_channels, out_channels, stride=1):
         layers = []
@@ -295,11 +313,11 @@ class PPOResNet20Encoder(NNBase):
         self.flatten = Flatten()
         self.relu = nn.ReLU()
 
-        self.fc1 = init_relu_(nn.Linear(8192, 2048))
-        self.fc2 = init_relu_(nn.Linear(2048, hidden_size))
+        self.fc1 = nn.Linear(8192, 2048)
+        self.fc2 = nn.Linear(2048, hidden_size)
 
         if self.use_actor_linear:
-            self.actor_linear = init_(nn.Linear(hidden_size, action_space))
+            self.actor_linear = nn.Linear(hidden_size, action_space)
 
         apply_init_(self.modules())
 

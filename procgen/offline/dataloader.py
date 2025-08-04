@@ -178,6 +178,150 @@ class OfflineDataset(torch.utils.data.Dataset):
         dones = curr[DatasetItemType.DONES.value][offset_in_episode] != 0
 
         return (obs, actions, rewards, next_obs, dones)
+    
+
+class DistillationDataset(torch.utils.data.Dataset):
+    """
+    Load episodes from files and sample a batch (obs, next_obs, action, reward, done)
+    from one of the loaded episodes.
+    """
+
+    _capacity: int
+    _episodes_dir_path: List[str]
+    _episodes: List[Dict[str, np.ndarray]]
+    _loaded: bool
+    _size: int
+    _num_transitions: int
+    _percentile: float
+    _zero_out_last_obs: bool
+    _episode_lengths: List[int]
+    _capacity_type: str
+    _specific_level_seed: Optional[int]
+    _max_episodes: Optional[int]
+    
+
+    def __init__(
+        self, capacity: int, episodes_dir_path: List[str], percentile: float = 1.0, zero_out_last_obs: bool = True,
+        capacity_type: str = 'transitions', specific_level_seed: Optional[int] = None, max_episodes: Optional[int] = None
+    ) -> None:
+        self._capacity = capacity
+        self._episodes_dir_path = (
+            [directory for directory in episodes_dir_path]
+            if isinstance(episodes_dir_path, list)
+            else [episodes_dir_path]
+        )
+        self._episodes = []
+        self._loaded = False
+        self._size = 0
+        self._percentile = percentile
+        self._zero_out_last_obs = zero_out_last_obs
+        self._specific_level_seed = specific_level_seed
+        self._capacity_type = capacity_type
+        if self._capacity_type == 'episodes':
+            assert max_episodes is not None, "max_episodes must be specified when capacity_type is 'episodes'"
+        elif self._capacity_type == 'transitions':
+            assert max_episodes is None, "max_episodes must be None when capacity_type is 'transitions'"
+        self._max_episodes = max_episodes
+        self._sort_by_return_and_load_by_percentile()
+        
+    def _calc_average_return(self) -> float:
+        # calculate average return across all episodes
+        rewards = []
+        for episode in self._episodes:
+            rewards.append(np.sum(episode[DatasetItemType.REWARDS.value]))
+        return np.mean(rewards)
+            
+
+    def _sort_by_return_and_load_by_percentile(self) -> None:
+        if self._loaded is True:
+            return
+
+        episode_filenames = sorted(
+            [f.path for directory in self._episodes_dir_path for f in os.scandir(directory)],
+            key=lambda path: OfflineDataset._fetch_return_from_path(path),
+            reverse=True,
+        )
+        print(f"[DEBUG] Total number of episodes: {len(episode_filenames)}.")
+
+        num_transitions = int(self._capacity * self._percentile)
+        print(
+            f"[DEBUG] Capacity: {self._capacity}. "
+            + f"Loading {num_transitions} ({100 * self._percentile}% of {self._capacity}) transitions ..."
+        )
+
+        # Store all episodes (capped by _capacity and _percentile) into _episodes
+        for name in episode_filenames:
+            if self._specific_level_seed is not None:
+                level_seed = int(name.split('/')[-1].split('_')[-2])
+                if level_seed != self._specific_level_seed:
+                    continue
+            episode = load_episode(name)
+            curr_episode_len = compute_episode_length(episode)
+            if curr_episode_len <= 0:
+                # Filter out invalid episodes
+                continue
+
+            self._episodes.append(episode)
+            self._size += curr_episode_len
+            if self._capacity_type  == 'transitions' and self._size > num_transitions:
+                break
+            elif self._capacity_type == 'episodes' and len(self._episodes) >= self._max_episodes:
+                break
+
+        print(f"[DEBUG] Loaded {len(self._episodes)} episodes with {self._size} transitions in total!")
+        self._loaded = True
+        self._num_transitions = min(num_transitions, self._size)
+
+        # _episode_lengths store the cumulated sum of lengths of episodes that are before the current one (included).
+        # As if all stored episodes are concatenated.
+        self._episode_lengths = list(accumulate(compute_episode_length(episode) for episode in self._episodes))
+
+    @staticmethod
+    def _fetch_return_from_path(path: str) -> float:
+        """
+        Example:
+        >>> path = '/my_documents/model_1_3.5.pt'
+        >>> score = fetch_return_from_path(path)
+        >>> score
+        3.5
+        """
+        return float(Path(path).stem.split("_")[-1])
+
+    def __len__(self) -> int:
+        return self._num_transitions
+
+    def __getitem__(self, index):
+        """
+        Example:
+            Suppose we have 3 episodes with length: 5, 3, 7. The capacity of the dataset is 10, percentile 100%.
+
+            Then we will store those 3 episodes, and _episode_lengths == [5, 5+3, 5+3+7].
+
+            The sample index will be 0 <= index <= 9, given the capacity as 10.
+
+            If index == 6, we know index >= 5 and index < 8, thus it should be in the middle episode, and its offset
+            to the beginning of that episode is (6-5) == 1.
+        """
+        # Use binary search to find out which episode whose transitions match the index.
+        episode_idx = bisect.bisect_right(self._episode_lengths, index)
+        curr = self._episodes[episode_idx]
+        # Compute the offset within the episode
+        offset_in_episode = index - (0 if episode_idx == 0 else self._episode_lengths[episode_idx - 1])
+
+        # Fetch corresponding state-action tuple.
+        obs = curr[DatasetItemType.OBSERVATIONS.value][offset_in_episode]
+        next_obs = (
+            # If the episode is completed, the next_obs is a zero vector
+            np.zeros_like(obs)
+            if self._zero_out_last_obs and curr[DatasetItemType.DONES.value][offset_in_episode]
+            else curr[DatasetItemType.OBSERVATIONS.value][offset_in_episode + 1]
+        )
+        actions = curr[DatasetItemType.ACTIONS.value][offset_in_episode]
+        rewards = curr[DatasetItemType.REWARDS.value][offset_in_episode]
+        dones = curr[DatasetItemType.DONES.value][offset_in_episode] != 0
+        probs = curr[DatasetItemType.PROBS.value][offset_in_episode]
+
+        return (obs, probs, rewards, next_obs, dones)
 
 
 class OfflineDTDataset:

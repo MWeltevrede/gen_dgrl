@@ -9,12 +9,15 @@ from offline.agents.bcq import BCQ
 from offline.agents.ddqn_cql import CQL
 from offline.agents.iql import IQL
 from offline.agents.dt import DecisionTransformer
+from offline.agents.distil import Distillation
 
 def _create_agent(args, env, extra_config):
     agent_name = args.algo
     if agent_name == "bc":
         return BehavioralCloning(env.observation_space, env.action_space.n, args.lr, args.agent_model, args.hidden_size)
-    if agent_name == "bcq":
+    elif agent_name == "distil":
+        return Distillation(env.observation_space, env.action_space.n, args.lr, args.agent_model, args.hidden_size)
+    elif agent_name == "bcq":
         assert args.agent_model in ["bcq", "bcqresnetbase"]
         return BCQ(env.observation_space, 
                    env.action_space.n, 
