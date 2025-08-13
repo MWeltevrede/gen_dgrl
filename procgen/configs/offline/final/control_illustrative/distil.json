@@ -1,0 +1,73 @@
+{
+    "grid": {
+        "algo": [
+            "value_distil"
+        ],
+        "env_name": [
+            "control_illustrative_base"
+        ],
+        "dataset": [
+            "datasets"
+        ],
+        "lr": [
+        	5e-5
+        ],
+        "batch_size": [
+            6
+        ],
+        "dataset_size":[
+            500
+        ],
+        "epochs": [
+            3000
+        ],
+        "agent_model": [
+            "illustrative_ensemble"
+        ],
+        "hidden_size": [
+            128
+        ],
+        "channels": [
+        	[512, 256]
+        ],
+        "normalize_obs": [
+            false
+        ],
+        "save_path": [
+            "models/"
+        ],
+        "num_levels": [
+            200
+        ],
+        "resume": [
+            false
+        ],
+        "percentile": [
+            1.0
+        ],
+        "eval_freq":[
+            20
+        ],
+        "eval_eps": [
+            0
+        ],
+        "ckpt_freq":[
+            500
+        ],
+        "early_stop": [
+            false
+        ],
+        "ensemble_size":[
+            1, 10, 100
+        ],
+        "cycle_priors":[
+            false
+        ],
+        "activation":[
+            "relu"
+        ],
+        "seed":[
+            0
+        ]
+    }
+}
