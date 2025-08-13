@@ -81,7 +81,7 @@ set_id = -1
 #	tasks_dict = json.load(file)
 #with open(f'datasets/task_sets_base.json', 'r') as file:
 #	tasks_dict = json.load(file)
-with open(f'datasets/task_sets_base.json', 'r') as file:
+with open(f'{args.dataset}/task_sets_base.json', 'r') as file:
 	tasks_dict = json.load(file)
 
 train_tasks = tasks_dict['base']
