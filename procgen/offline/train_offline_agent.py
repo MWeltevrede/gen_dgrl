@@ -9,6 +9,8 @@ import logging
 import os
 import time
 import json
+import csv
+import numpy as np
 
 import torch
 import torch.nn as nn
@@ -26,14 +28,6 @@ from utils.early_stopper import EarlyStop
 
 from gym.envs.registration import register
 import gym
-register(
-     id="GridIllustrativeCMDPContinuous-v0",
-     entry_point="grid_illustrative_env:IllustrativeCMDPContinuous",
-)
-register(
-     id="GridIllustrativeCMDPDiscrete-v0",
-     entry_point="grid_illustrative_env:IllustrativeCMDPDiscrete",
-)
 register(
      id="ControlIllustrativeCMDP-v0",
      entry_point="control_illustrative_env:ControlIllustrativeCMDP",
@@ -59,7 +53,7 @@ with open("wandb_info.txt") as file:
     os.environ["WANDB_API_KEY"] = lines[1]
     os.environ["WANDB_START_METHOD"] = "thread"
     wandb_group = args.xpid[:-2][:126]  # '-'.join(args.xpid.split('-')[:-2])[:120]
-    wandb_project = "OfflineRLBenchmark"
+    wandb_project = "Pessimism"
     wandb.init(project=wandb_project, entity=lines[2], config=args, name=args.xpid, group=wandb_group, tags=[args.algo, args.env_name, *args.wandb_tags])
 
 log_dir = os.path.expandvars(os.path.expanduser(os.path.join(args.save_path, args.env_name)))
@@ -69,6 +63,9 @@ if os.path.exists(os.path.join(log_dir, args.xpid, "final_model.pt")):
     print("Final model already exists in the log_dir")
     exit(0)
 filewriter = FileWriter(xpid=args.xpid, xp_args=args.__dict__, rootdir=log_dir)
+filewriter.final_test_eval_fieldnames = ["final_test_ret", "final_train_ret", "final_val_ret", "final_total_variation"]
+filewriter._finaltestwriter = csv.DictWriter(filewriter._finaltestfile, fieldnames=filewriter.final_test_eval_fieldnames)
+filewriter._finaltestwriter.writeheader()
 
 
 def log_stats(stats):
@@ -78,35 +75,17 @@ def log_stats(stats):
 
 # logging.getLogger().setLevel(logging.INFO)
 
+#set_id = int(args.xpid.split('_')[-1])
 set_id = -1
-if args.env_name == "control_illustrative_base_c2":
-    # C2 Rotations
-    train_tasks = [(45,-45,0), (45,-45,180)]
-    # Random testing rotations
-    test_tasks = [(45,-45,-9), (45,-45,13), (45,-45,71), (45,-45,102), (45,-45,158), (45,-45,199), (45,-45,247), (45,-45,335)]
-elif args.env_name == "control_illustrative_base_c4":
-    # C4 Rotations
-    train_tasks = [(45,-45,0), (45,-45,90), (45,-45,180), (45,-45,270)]
-    # Random testing rotations
-    test_tasks = [(45,-45,-9), (45,-45,13), (45,-45,71), (45,-45,102), (45,-45,158), (45,-45,199), (45,-45,247), (45,-45,335)]
-elif args.env_name == "control_illustrative_base_c8":
-    # C8 Rotations
-    train_tasks = [(45,-45,0), (45,-45,45), (45,-45,90), (45,-45,135), (45,-45,180), (45,-45,225), (45,-45,270), (45,-45,315)]
-    # Random testing rotations
-    test_tasks = [(45,-45,-9), (45,-45,13), (45,-45,71), (45,-45,102), (45,-45,158), (45,-45,199), (45,-45,247), (45,-45,335)]
-else:
-    set_id = int(args.xpid.split('_')[-1])
-    with open(f'datasets/task_sets_{set_id}.json', 'r') as file:
-        tasks_dict = json.load(file)
-    
-    
-    if "da" in args.env_name:
-        train_tasks = tasks_dict['base + da']
-    elif "random" in args.env_name:
-        train_tasks = tasks_dict['base + random']
-    else:
-        train_tasks = tasks_dict['base']
-    test_tasks = []
+#with open(f'datasets/task_sets_{set_id}.json', 'r') as file:
+#	tasks_dict = json.load(file)
+#with open(f'datasets/task_sets_base.json', 'r') as file:
+#	tasks_dict = json.load(file)
+with open(f'datasets/task_sets_base.json', 'r') as file:
+	tasks_dict = json.load(file)
+
+train_tasks = tasks_dict['base']
+test_tasks = tasks_dict['test']
 
 # Load dataset
 pin_dataloader_memory = True
@@ -133,9 +112,8 @@ dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, pin_m
 print("Dataset Loaded!")
 
 ## create Illustrative env
-env_kwargs = {}
-env = gym.make('ControlIllustrativeCMDP-v0', tasks=train_tasks)
-eval_env_type = "control"
+env_kwargs = {'n_actions':3, 'simple_r_function':True}
+env = gym.make('ControlIllustrativeCMDP-v0', tasks=train_tasks, **env_kwargs)
 
 curr_epochs = 0
 last_logged_update_count_at_restart = -1
@@ -199,7 +177,6 @@ for epoch in range(curr_epochs, args.epochs):
             agent,
             device,
             test_tasks,
-            env=eval_env_type,
             eval_eps=args.eval_eps,
             env_kwargs=env_kwargs
         )
@@ -207,7 +184,6 @@ for epoch in range(curr_epochs, args.epochs):
             agent,
             device,
             train_tasks,
-            env=eval_env_type,
             eval_eps=args.eval_eps,
             env_kwargs=env_kwargs
         )
@@ -240,13 +216,54 @@ for epoch in range(curr_epochs, args.epochs):
         agent.save(num_epochs=curr_epochs, path=os.path.join(args.save_path, args.env_name, args.xpid, "model.pt"))
         agent.save(num_epochs=curr_epochs, path=os.path.join(args.save_path, args.env_name, args.xpid, f"model_{epoch}.pt"))
                 
-test_mean_perf, test_mean_len = eval_agent(agent, device, test_tasks, env=eval_env_type, eval_eps=args.eval_eps, env_kwargs=env_kwargs)
-train_mean_perf, train_mean_len = eval_agent(agent, device, train_tasks, env=eval_env_type, eval_eps=args.eval_eps, env_kwargs=env_kwargs)
+test_mean_perf, test_mean_len = eval_agent(agent, device, test_tasks, eval_eps=args.eval_eps, env_kwargs=env_kwargs)
+train_mean_perf, train_mean_len = eval_agent(agent, device, train_tasks, eval_eps=args.eval_eps, env_kwargs=env_kwargs)
 
-wandb.log({"final_test_ret": test_mean_perf, "final_test_len": test_mean_len, "final_train_ret": train_mean_perf, "final_train_len": train_mean_len}, step=(epoch + 1))
+## Measure rotational invariance (for the group C4)
+#test_tasks_split_by_pose = []
+#current_pose = (test_tasks[0][0], test_tasks[0][1])
+#temp_tasks = [test_tasks[0]]
+#for tt in test_tasks:
+#    # assume different rotations of the same pose follow each other sequentially
+#    if not (tt[0], tt[1]) == current_pose:
+#        test_tasks_split_by_pose.append(temp_tasks)
+#        temp_tasks = []
+#        temp_tasks.append(tt)
+#        current_pose = (tt[0], tt[1])
+#    else:
+#    	temp_tasks.append(tt)
+        
+#total_variation = []
+#for tasksets in test_tasks_split_by_pose:
+#	obs = []
+#	env = gym.make('ControlIllustrativeCMDP-v0', tasks=tasksets, n_actions=5, simple_r_function=False)
+#	for _ in range(len(tasksets)):
+#		obs.append(env.reset())
+#	obs = np.array(obs)
+#	obs = torch.as_tensor(obs, device=device)
+#	with torch.no_grad():
+#		output = agent.eval_step(obs, eps=0)
+#	total_variation.append(np.trace(np.cov(output, rowvar=False)))
+#total_variation = np.mean(total_variation)
+
+total_variation = []
+obs = []
+env = gym.make('ControlIllustrativeCMDP-v0', tasks=test_tasks, **env_kwargs)
+for _ in range(len(test_tasks)):
+	obs.append(env.reset())
+obs = np.array(obs)
+obs = torch.as_tensor(obs, device=device)
+with torch.no_grad():
+	output = agent.model_base(obs).mean(dim=0)
+total_variation.append(np.trace(np.cov(output.cpu().numpy(), rowvar=False)))
+total_variation = np.mean(total_variation)
+
+
+wandb.log({"final_total_variation": total_variation, "final_test_ret": test_mean_perf, "final_test_len": test_mean_len, "final_train_ret": train_mean_perf, "final_train_len": train_mean_len}, step=(epoch + 1))
 filewriter.log_final_test_eval({
         'final_test_ret': test_mean_perf,
         'final_train_ret': train_mean_perf,
+        'final_total_variation': total_variation
     })
 if args.resume:
     agent.save(num_epochs=args.epochs, path=os.path.join(args.save_path, args.env_name, args.xpid, "final_model.pt"))
