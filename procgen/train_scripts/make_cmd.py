@@ -163,7 +163,7 @@ def xpid_from_params(p, prefix="", algo="", is_single=False):
             f"{algo}-lr{p['lr']}-epoch{p['ppo_epoch']}-mb{p['num_mini_batch']}"
             + f"-v{p['value_loss_coef']}-ha{p['entropy_coef']}"
         )
-    elif algo == "bc_n":
+    elif algo == "bc_n" or "value_distil":
         algo_prefix = f"{algo}-lr{p['lr']}-N{p['ensemble_size']}"
     else:
         algo_prefix = f"{algo}-lr{p['lr']}"
