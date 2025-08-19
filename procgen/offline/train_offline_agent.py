@@ -81,7 +81,12 @@ set_id = -1
 #	tasks_dict = json.load(file)
 #with open(f'datasets/task_sets_base.json', 'r') as file:
 #	tasks_dict = json.load(file)
-with open(f'{args.dataset}/task_sets_base.json', 'r') as file:
+env_name_split = args.env_name.split('_')
+assert env_name_split[0] == 'control'
+assert env_name_split[1] == 'illustrative'
+env_type = '_'.join(args.env_name.split('_')[2:])
+with open(f'{args.dataset}/task_sets_{env_type}.json', 'r') as file:
+#with open(f'{args.dataset}/task_sets_base.json', 'r') as file:
 	tasks_dict = json.load(file)
 
 train_tasks = tasks_dict['base']
