@@ -32,7 +32,8 @@ class IQL:
 		eps_decay,
 		iql_temperature,
 		iql_expectile,
-		perform_polyak_update
+		perform_polyak_update,
+		initialisation
 	):
 		"""
 		Initialize the agent.
@@ -73,25 +74,25 @@ class IQL:
 
 		# Implement the Actor, Critic and Value Function
 		self.model_actor = AGENT_CLASSES[agent_model](
-			observation_space, action_space, hidden_size, use_actor_linear=False
+			observation_space, action_space, hidden_size, use_actor_linear=False, initialisation=initialisation
 		)
-		self.actor_dist = Categorical(hidden_size, self.action_space)
+		self.actor_dist = Categorical(hidden_size, self.action_space, initialisation=initialisation)
 		# optimizer_actor uses parameters from model_actor and actor_dist
 		actor_model_params = list(self.model_actor.parameters()) + list(self.actor_dist.parameters())
 		self.optimizer_actor = torch.optim.Adam(actor_model_params, lr=self.lr)
 
-		self.model_v = AGENT_CLASSES[agent_model](observation_space, 1, hidden_size)
+		self.model_v = AGENT_CLASSES[agent_model](observation_space, 1, hidden_size, initialisation=initialisation)
 		self.optimizer_v = torch.optim.Adam(self.model_v.parameters(), lr=self.lr)
 
-		self.model_q1 = AGENT_CLASSES[agent_model](observation_space, action_space, hidden_size)
+		self.model_q1 = AGENT_CLASSES[agent_model](observation_space, action_space, hidden_size, initialisation=initialisation)
 		self.optimizer_q1 = torch.optim.Adam(self.model_q1.parameters(), lr=self.lr)
-		self.target_q1 = AGENT_CLASSES[agent_model](observation_space, action_space, hidden_size)
+		self.target_q1 = AGENT_CLASSES[agent_model](observation_space, action_space, hidden_size, initialisation=initialisation)
 		self.target_q1.load_state_dict(self.model_q1.state_dict())
 		self.target_q1.eval()
 
-		self.model_q2 = AGENT_CLASSES[agent_model](observation_space, action_space, hidden_size)
+		self.model_q2 = AGENT_CLASSES[agent_model](observation_space, action_space, hidden_size, initialisation=initialisation)
 		self.optimizer_q2 = torch.optim.Adam(self.model_q2.parameters(), lr=self.lr)
-		self.target_q2 = AGENT_CLASSES[agent_model](observation_space, action_space, hidden_size)
+		self.target_q2 = AGENT_CLASSES[agent_model](observation_space, action_space, hidden_size, initialisation=initialisation)
 		self.target_q2.load_state_dict(self.model_q2.state_dict())
 		self.target_q2.eval()
 

@@ -26,7 +26,8 @@ class CQL:
 				 eps_end, 
 				 eps_decay, 
 				 cql_alpha,
-     			 perform_polyak_update):
+     			 perform_polyak_update,
+				 initialisation):
 		"""
 		Initialize the agent.
 
@@ -51,8 +52,8 @@ class CQL:
 		self.target_update_freq = target_update_freq
 		self.tau = tau
 		
-		self.model = AGENT_CLASSES[agent_model](observation_space, action_space, hidden_size)
-		self.target_model = AGENT_CLASSES[agent_model](observation_space, action_space, hidden_size)
+		self.model = AGENT_CLASSES[agent_model](observation_space, action_space, hidden_size, initialisation=initialisation)
+		self.target_model = AGENT_CLASSES[agent_model](observation_space, action_space, hidden_size, initialisation=initialisation)
 		
 		self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
 		

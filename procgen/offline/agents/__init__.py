@@ -13,7 +13,7 @@ from offline.agents.dt import DecisionTransformer
 def _create_agent(args, env, extra_config):
     agent_name = args.algo
     if agent_name == "bc":
-        return BehavioralCloning(env.observation_space, env.action_space.n, args.lr, args.agent_model, args.hidden_size)
+        return BehavioralCloning(env.observation_space, env.action_space.n, args.lr, args.agent_model, args.hidden_size, args.init)
     if agent_name == "bcq":
         assert args.agent_model in ["bcq", "bcqresnetbase"]
         return BCQ(env.observation_space, 
@@ -42,7 +42,8 @@ def _create_agent(args, env, extra_config):
                    eps_end=args.eps_end,
                    eps_decay=args.eps_decay,
                    cql_alpha=args.cql_alpha,
-                   perform_polyak_update=args.perform_polyak_update)
+                   perform_polyak_update=args.perform_polyak_update,
+                   initialisation=args.init)
     elif agent_name == "iql":
         return IQL(env.observation_space, 
                    env.action_space.n, 
@@ -57,7 +58,8 @@ def _create_agent(args, env, extra_config):
                    eps_decay=args.eps_decay,
                    iql_temperature=args.iql_temperature,
                    iql_expectile=args.iql_expectile,
-                   perform_polyak_update=args.perform_polyak_update)
+                   perform_polyak_update=args.perform_polyak_update,
+                   initialisation=args.init)
     elif agent_name in ["dt", "bct"]:
         return DecisionTransformer(env.observation_space,
                                    env.action_space.n, 

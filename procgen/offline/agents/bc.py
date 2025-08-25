@@ -13,7 +13,7 @@ from online.behavior_policies.distributions import Categorical
 
 
 class BehavioralCloning:
-    def __init__(self, observation_space, action_space, lr, agent_model, hidden_size=64):
+    def __init__(self, observation_space, action_space, lr, agent_model, hidden_size=64, initialisation='orthogonal'):
         """
         Initialize the agent.
 
@@ -27,8 +27,8 @@ class BehavioralCloning:
         self.lr = lr
         self.hidden_size = hidden_size
 
-        self.model_base = AGENT_CLASSES[agent_model](observation_space, action_space, hidden_size, use_actor_linear=False)
-        self.model_dist = Categorical(hidden_size, self.action_space)
+        self.model_base = AGENT_CLASSES[agent_model](observation_space, action_space, hidden_size, use_actor_linear=False, initialisation=initialisation)
+        self.model_dist = Categorical(hidden_size, self.action_space, initialisation=initialisation)
         self.optimizer = torch.optim.Adam(list(self.model_base.parameters()) + list(self.model_dist.parameters()), lr=self.lr)
         
         self.total_steps = 0

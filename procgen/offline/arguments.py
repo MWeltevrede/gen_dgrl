@@ -25,6 +25,7 @@ parser.add_argument("--resume", type=str2bool, default=False, help="Resume train
 parser.add_argument("--deterministic", type=str2bool, default=False, help="Sample actions deterministically")
 parser.add_argument("--xpid", type=str, default=None, help="experiment name")
 parser.add_argument("--eval_eps", type=float, default=0.001, help="epsilon for evaluation")
+parser.add_argument("--init", type=str, default="orthogonal", choices=["orthogonal", "default"])
 
 # Environment
 parser.add_argument("--env_name", type=str, default="bigfish", help="Name of environment")

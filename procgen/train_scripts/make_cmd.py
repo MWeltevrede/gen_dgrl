@@ -126,7 +126,7 @@ def xpid_from_params(p, prefix="", algo="", is_single=False):
         env_prefix = f"{env_prefix}-d{short_int(p['dataset_size'])}"
 
     if algo in ["bc", "cql", "bcq", "iql", "dt", "bct"]:
-        algo_prefix = f"{algo}-p{p['percentile']}-lr{p['lr']}-bs{p['batch_size']}-{p['agent_model']}"
+        algo_prefix = f"{algo}-p{p['percentile']}-lr{p['lr']}-bs{p['batch_size']}-{p['agent_model']}-init{p['init']}"
         if algo in ["cql", "bcq", "iql"]:
             algo_prefix = f"{algo_prefix}-tuf{p['target_update_freq']}"
             if p['perform_polyak_update']:
