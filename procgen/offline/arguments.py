@@ -66,3 +66,7 @@ parser.add_argument("--dt_eval_ret", type=int, default=0, help="evaluation retur
 # Single Level Training
 parser.add_argument("--capacity_type", type=str, default="transitions", choices=["transitions", "episodes"], help="capacity type")
 parser.add_argument("--threshold_metric", type=str, default="median", choices=["percentile", "median"], help="threshold metric")
+
+# Multiple Agent Training
+parser.add_argument("--agent_ids", nargs='+', type=int, default=0, help="provide IDs for the agents to be trained")
+parser.add_argument("--seeds", nargs='+', type=int, default=88, help="Provide the seeds for the agents to be trained")
