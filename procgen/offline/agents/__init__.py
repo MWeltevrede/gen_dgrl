@@ -7,7 +7,7 @@
 from offline.agents.bc import BehavioralCloning
 from offline.agents.bcq import BCQ
 from offline.agents.ddqn_cql import CQL
-from offline.agents.iql import IQL
+from offline.agents.iql import IQL, IQLGreedy
 from offline.agents.dt import DecisionTransformer
 
 def _create_agent(args, env, extra_config):
@@ -46,6 +46,22 @@ def _create_agent(args, env, extra_config):
                    initialisation=args.init)
     elif agent_name == "iql":
         return IQL(env.observation_space, 
+                   env.action_space.n, 
+                   args.lr, 
+                   args.agent_model, 
+                   args.hidden_size,
+                   gamma=args.gamma,
+                   target_update_freq=args.target_update_freq,
+                   tau=args.tau,
+                   eps_start=args.eps_start,
+                   eps_end=args.eps_end,
+                   eps_decay=args.eps_decay,
+                   iql_temperature=args.iql_temperature,
+                   iql_expectile=args.iql_expectile,
+                   perform_polyak_update=args.perform_polyak_update,
+                   initialisation=args.init)
+    elif agent_name == "iql_greedy":
+        return IQLGreedy(env.observation_space, 
                    env.action_space.n, 
                    args.lr, 
                    args.agent_model, 

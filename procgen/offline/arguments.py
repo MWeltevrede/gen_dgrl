@@ -8,7 +8,7 @@ import argparse
 from utils.utils import str2bool
 
 parser = argparse.ArgumentParser(description="Train offline agents")
-parser.add_argument("--algo", type=str, default="bc", choices=["bc", "cql", "dt", "bct", "bcq", "offlinedqn", "iql", "xql"], help="Algorithm to train")
+parser.add_argument("--algo", type=str, default="bc", choices=["bc", "cql", "dt", "bct", "bcq", "offlinedqn", "iql", "iql_greedy", "xql"], help="Algorithm to train")
 parser.add_argument("--dataset", type=str, default="data/dataset.hdf5", help="Path to dataset")
 parser.add_argument("--percentile", type=float, default=1.0, help="percentile for top% training")
 parser.add_argument("--dataset_size", type=int, default=1000000, help="Size of dataset")
