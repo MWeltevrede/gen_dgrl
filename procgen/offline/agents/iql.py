@@ -311,6 +311,53 @@ class IQL:
 		return checkpoint["curr_epochs"]
 
 class IQLGreedy(IQL):
+	def __init__(
+		self,
+		observation_space,
+		action_space,
+		lr,
+		agent_model,
+		hidden_size,
+		gamma,
+		target_update_freq,
+		tau,
+		eps_start,
+		eps_end,
+		eps_decay,
+		iql_temperature,
+		iql_expectile,
+		perform_polyak_update,
+		initialisation
+	):
+		super().__init__(
+			observation_space=observation_space,
+			action_space=action_space,
+			lr=lr,
+			agent_model=agent_model,
+			hidden_size=hidden_size,
+			gamma=gamma,
+			target_update_freq=target_update_freq,
+			tau=tau,
+			eps_start=eps_start,
+			eps_end=eps_end,
+			eps_decay=eps_decay,
+			iql_temperature=iql_temperature,
+			iql_expectile=iql_expectile,
+			perform_polyak_update=perform_polyak_update,
+			initialisation=initialisation,
+		)
+		self.agent_model = agent_model
+		self.initialisation = initialisation
+
+	def reset_actor(self):
+		self.model_actor = AGENT_CLASSES[self.agent_model](
+			self.observation_space, self.action_space, self.hidden_size, use_actor_linear=False, initialisation=self.initialisation
+		)
+		self.actor_dist = Categorical(self.hidden_size, self.action_space, initialisation=self.initialisation)
+		# optimizer_actor uses parameters from model_actor and actor_dist
+		actor_model_params = list(self.model_actor.parameters()) + list(self.actor_dist.parameters())
+		self.optimizer_actor = torch.optim.Adam(actor_model_params, lr=self.lr)
+
 	def train_step(self, observations, actions, rewards, next_observations, dones):
 		# 1. Calculate Value Loss
 		with torch.no_grad():
