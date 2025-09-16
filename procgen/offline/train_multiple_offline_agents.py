@@ -124,14 +124,13 @@ for i, id in enumerate(args.agent_ids):
 
         # Train agent
         for epoch in range(curr_epochs, args.epochs):
-            agent.train()
-            epoch_loss = 0
-            epoch_start_time = time.time()
-            
             if args.algo in "iql_greedy":
                 # reset actor every epoch
                 agent.reset_actor()
-            
+                
+            agent.train()
+            epoch_loss = 0
+            epoch_start_time = time.time()
             if args.algo in ["dt", "bct"]:
                 for observations, actions, rtgs, timesteps, padding_mask in dataloader:
                     observations, actions, rtgs, timesteps, padding_mask = (
