@@ -358,8 +358,19 @@ class IQLGreedy(IQL):
 		actor_model_params = list(self.model_actor.parameters()) + list(self.actor_dist.parameters())
 		self.optimizer_actor = torch.optim.Adam(actor_model_params, lr=self.lr)
 
-		self.model_actor.to(self.model_v.device)
-		self.actor_dist.to(self.model_v.device)
+		self.model_actor.to(self.device)
+		self.actor_dist.to(self.device)
+
+
+	def set_device(self, device):
+		self.model_actor.to(device)
+		self.actor_dist.to(device)
+		self.model_v.to(device)
+		self.model_q1.to(device)
+		self.model_q2.to(device)
+		self.target_q1.to(device)
+		self.target_q2.to(device)
+		self.device = device
 
 	def train_step(self, observations, actions, rewards, next_observations, dones):
 		# 1. Calculate Value Loss
