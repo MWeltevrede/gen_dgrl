@@ -263,7 +263,7 @@ class ControlIllustrativeCMDP(gym.Env):
 		shifted_location = scaled_location + np.array([self.render_size / 2, self.render_size / 2])
 		int_location = np.round(shifted_location).astype(np.int32)
 
-		return np.clip(int_location + np.array([self.render_size // 2, self.render_size // 2]), 0, 2*self.render_size)
+		return np.clip(int_location + np.array([self.render_size // 2, self.render_size // 2]), 0, 2*self.render_size-1)
 
 	def render(self, mode=None):
 		img = np.ones((3,2*self.render_size, 2*self.render_size))
