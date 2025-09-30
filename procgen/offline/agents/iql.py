@@ -426,9 +426,304 @@ class IQLGreedy(IQL):
 		action_dist = self.actor_dist(action_feats)
 		greedy_actions = torch.max(all_q_minimum, dim=-1)[1]
 		#action_log_prob = action_dist.log_probs(greedy_actions)
+		#action_log_prob = action_dist.log_probs(actions)
 		#actor_loss = -(exp_action * action_log_prob).mean()  # [1]
 		action_log_probs = action_dist._get_log_softmax()
 		actor_loss = F.nll_loss(action_log_probs, greedy_actions)
+		self.optimizer_actor.zero_grad(set_to_none=True)
+		actor_loss.backward()
+		self.optimizer_actor.step()
+
+		self.total_steps += 1
+
+		# create stats dict
+		with torch.no_grad():
+			loss = value_loss + actor_loss + critic1_loss + critic2_loss
+		stats = {
+			"loss": loss.item(),
+			"value_loss": value_loss.item(),
+			"critic1_loss": critic1_loss.item(),
+			"critic2_loss": critic2_loss.item(),
+			"actor_loss": actor_loss.item(),
+			"total_steps": self.total_steps,
+		}
+		# print(stats["actor_loss"])
+		return stats
+	
+
+
+
+class IQLConcistency(IQL):
+	def __init__(
+		self,
+		observation_space,
+		action_space,
+		lr,
+		agent_model,
+		hidden_size,
+		gamma,
+		target_update_freq,
+		tau,
+		eps_start,
+		eps_end,
+		eps_decay,
+		iql_temperature,
+		iql_expectile,
+		perform_polyak_update,
+		initialisation,
+		concistency_coef,
+	):
+		super().__init__(
+			observation_space=observation_space,
+			action_space=action_space,
+			lr=lr,
+			agent_model=agent_model,
+			hidden_size=hidden_size,
+			gamma=gamma,
+			target_update_freq=target_update_freq,
+			tau=tau,
+			eps_start=eps_start,
+			eps_end=eps_end,
+			eps_decay=eps_decay,
+			iql_temperature=iql_temperature,
+			iql_expectile=iql_expectile,
+			perform_polyak_update=perform_polyak_update,
+			initialisation=initialisation,
+		)
+		self.agent_model = agent_model
+		self.initialisation = initialisation
+		self.concistency_coef = concistency_coef
+
+	def reset_actor(self):
+		self.model_actor = AGENT_CLASSES[self.agent_model](
+			self.observation_space, self.action_space, self.hidden_size, use_actor_linear=False, initialisation=self.initialisation
+		)
+		self.actor_dist = Categorical(self.hidden_size, self.action_space, initialisation=self.initialisation)
+		# optimizer_actor uses parameters from model_actor and actor_dist
+		actor_model_params = list(self.model_actor.parameters()) + list(self.actor_dist.parameters())
+		self.optimizer_actor = torch.optim.Adam(actor_model_params, lr=self.lr)
+
+		self.model_actor.to(self.device)
+		self.actor_dist.to(self.device)
+
+
+	def set_device(self, device):
+		self.model_actor.to(device)
+		self.actor_dist.to(device)
+		self.model_v.to(device)
+		self.model_q1.to(device)
+		self.model_q2.to(device)
+		self.target_q1.to(device)
+		self.target_q2.to(device)
+		self.device = device
+
+	def train_step(self, observations, actions, rewards, next_observations, dones):
+		# 1. Calculate Value Loss
+		with torch.no_grad():
+			all_q1 = self.target_q1(observations)	# [batch_size, n_actions]
+			q1 = all_q1.gather(1, actions)  # [batch_size, 1]
+			all_q2 = self.target_q2(observations)	# [batch_size, n_actions]
+			q2 = all_q2.gather(1, actions)  # [batch_size, 1]
+			q_minimum = torch.min(q1, q2)  # [batch_size, 1]
+			all_q_minimum = torch.min(all_q1, all_q2)
+
+		curr_value = self.model_v(observations)  # [batch_size, 1]
+		u_diff = q_minimum - curr_value  # [batch_size, 1]
+		value_loss = self.expectile_loss(u_diff, self.iql_expectile)  # [1]
+		self.optimizer_v.zero_grad(set_to_none=True)
+		value_loss.backward()
+		self.optimizer_v.step()
+
+		# 2. Calculate Critic Loss
+		with torch.no_grad():
+			next_v = self.model_v(next_observations)  # [batch_size, 1]
+		target_q = rewards + (1 - dones) * self.gamma * next_v.detach()  # [batch_size, 1]
+		curr_q1 = self.model_q1(observations).gather(1, actions)  # [batch_size, 1]
+		curr_q2 = self.model_q2(observations).gather(1, actions)  # [batch_size, 1]
+		critic1_loss = F.mse_loss(curr_q1, target_q).mean()  # [1]
+
+		self.optimizer_q1.zero_grad(set_to_none=True)
+		critic1_loss.backward()
+		self.optimizer_q1.step()
+
+		critic2_loss = F.mse_loss(curr_q2, target_q).mean()  # [1]
+		self.optimizer_q2.zero_grad(set_to_none=True)
+		critic2_loss.backward()
+		self.optimizer_q2.step()
+		
+		# Update the target network, copying all weights and biases in DQN
+		if self.perform_polyak_update:
+			for target_param, param in zip(self.target_q1.parameters(), self.model_q1.parameters()):
+				target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+			for target_param, param in zip(self.target_q2.parameters(), self.model_q2.parameters()):
+				target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+		else:
+			if self.total_steps % self.target_update_freq == 0:
+				self.target_q1.load_state_dict(self.model_q1.state_dict())
+				self.target_q2.load_state_dict(self.model_q2.state_dict())
+
+		# 3. Calculate Actor Loss
+		exp_action = torch.exp(u_diff.detach() * self.iql_temperature)  # [batch_size, 1]
+		# take minimum of exp_action and 100.0 to avoid overflow
+		exp_action = torch.min(exp_action, torch.tensor(100.0).to(exp_action.device))  # [batch_size, 1]
+		# _, action_log_prob = self.get_action(observations, return_log_probs=True)  # [batch_size, 1]
+		action_feats = self.model_actor(observations)  # [batch_size, 512]
+		action_dist = self.actor_dist(action_feats)
+		action_log_prob = action_dist.log_probs(actions)
+		actor_loss = -(exp_action * action_log_prob).mean()  # [1]
+
+
+		# add a concistency loss based on the greedy action
+		greedy_actions = torch.max(all_q_minimum, dim=-1)[1]
+		concistency_loss = []
+		for i in set(greedy_actions.cpu().numpy()):
+			concistency_loss.append(F.mse_loss(action_feats[torch.where(greedy_actions == i)[0]], torch.roll(action_feats[torch.where(greedy_actions == i)[0]], 1, dims=0).detach(), reduction='none'))
+		concistency_loss = torch.concat(concistency_loss, dim=0).mean()
+		actor_loss = actor_loss + self.concistency_coef * concistency_loss
+
+		self.optimizer_actor.zero_grad(set_to_none=True)
+		actor_loss.backward()
+		self.optimizer_actor.step()
+
+		self.total_steps += 1
+
+		# create stats dict
+		with torch.no_grad():
+			loss = value_loss + actor_loss + critic1_loss + critic2_loss
+		stats = {
+			"loss": loss.item(),
+			"value_loss": value_loss.item(),
+			"critic1_loss": critic1_loss.item(),
+			"critic2_loss": critic2_loss.item(),
+			"actor_loss": actor_loss.item(),
+			"actor_concistency_loss": concistency_loss.item(),
+			"total_steps": self.total_steps,
+		}
+		# print(stats["actor_loss"])
+		return stats
+	
+
+
+
+
+class IQLEnsemble(IQL):
+	def __init__(
+		self,
+		observation_space,
+		action_space,
+		lr,
+		agent_model,
+		hidden_size,
+		gamma,
+		target_update_freq,
+		tau,
+		eps_start,
+		eps_end,
+		eps_decay,
+		iql_temperature,
+		iql_expectile,
+		perform_polyak_update,
+		initialisation,
+	):
+		super().__init__(
+			observation_space=observation_space,
+			action_space=action_space,
+			lr=lr,
+			agent_model=agent_model,
+			hidden_size=hidden_size,
+			gamma=gamma,
+			target_update_freq=target_update_freq,
+			tau=tau,
+			eps_start=eps_start,
+			eps_end=eps_end,
+			eps_decay=eps_decay,
+			iql_temperature=iql_temperature,
+			iql_expectile=iql_expectile,
+			perform_polyak_update=perform_polyak_update,
+			initialisation=initialisation,
+		)
+		self.agent_model = agent_model
+		self.initialisation = initialisation
+
+	def reset_actor(self):
+		self.model_actor = AGENT_CLASSES[self.agent_model](
+			self.observation_space, self.action_space, self.hidden_size, use_actor_linear=False, initialisation=self.initialisation
+		)
+		self.actor_dist = Categorical(self.hidden_size, self.action_space, initialisation=self.initialisation)
+		# optimizer_actor uses parameters from model_actor and actor_dist
+		actor_model_params = list(self.model_actor.parameters()) + list(self.actor_dist.parameters())
+		self.optimizer_actor = torch.optim.Adam(actor_model_params, lr=self.lr)
+
+		self.model_actor.to(self.device)
+		self.actor_dist.to(self.device)
+
+
+	def set_device(self, device):
+		self.model_actor.to(device)
+		self.actor_dist.to(device)
+		self.model_v.to(device)
+		self.model_q1.to(device)
+		self.model_q2.to(device)
+		self.target_q1.to(device)
+		self.target_q2.to(device)
+		self.device = device
+
+	def train_step(self, observations, actions, rewards, next_observations, dones):
+		# 1. Calculate Value Loss
+		with torch.no_grad():
+			all_q1 = self.target_q1(observations)	# [batch_size, n_actions]
+			q1 = all_q1.gather(1, actions)  # [batch_size, 1]
+			all_q2 = self.target_q2(observations)	# [batch_size, n_actions]
+			q2 = all_q2.gather(1, actions)  # [batch_size, 1]
+			q_minimum = torch.min(q1, q2)  # [batch_size, 1]
+			all_q_avg = torch.mean(torch.stack([all_q1, all_q2], dim=0), dim=0)
+
+		curr_value = self.model_v(observations)  # [batch_size, 1]
+		u_diff = q_minimum - curr_value  # [batch_size, 1]
+		value_loss = self.expectile_loss(u_diff, self.iql_expectile)  # [1]
+		self.optimizer_v.zero_grad(set_to_none=True)
+		value_loss.backward()
+		self.optimizer_v.step()
+
+		# 2. Calculate Critic Loss
+		with torch.no_grad():
+			next_v = self.model_v(next_observations)  # [batch_size, 1]
+		target_q = rewards + (1 - dones) * self.gamma * next_v.detach()  # [batch_size, 1]
+		curr_q1 = self.model_q1(observations).gather(1, actions)  # [batch_size, 1]
+		curr_q2 = self.model_q2(observations).gather(1, actions)  # [batch_size, 1]
+		critic1_loss = F.mse_loss(curr_q1, target_q).mean()  # [1]
+
+		self.optimizer_q1.zero_grad(set_to_none=True)
+		critic1_loss.backward()
+		self.optimizer_q1.step()
+
+		critic2_loss = F.mse_loss(curr_q2, target_q).mean()  # [1]
+		self.optimizer_q2.zero_grad(set_to_none=True)
+		critic2_loss.backward()
+		self.optimizer_q2.step()
+		
+		# Update the target network, copying all weights and biases in DQN
+		if self.perform_polyak_update:
+			for target_param, param in zip(self.target_q1.parameters(), self.model_q1.parameters()):
+				target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+			for target_param, param in zip(self.target_q2.parameters(), self.model_q2.parameters()):
+				target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+		else:
+			if self.total_steps % self.target_update_freq == 0:
+				self.target_q1.load_state_dict(self.model_q1.state_dict())
+				self.target_q2.load_state_dict(self.model_q2.state_dict())
+
+		# 3. Calculate Actor Loss
+		actor_u_diff = all_q_avg.gather(1, actions) - torch.max(all_q_avg, dim=-1, keepdim=True)
+		exp_action = torch.exp(actor_u_diff.detach() * self.iql_temperature)  # [batch_size, 1]
+		# take minimum of exp_action and 100.0 to avoid overflow
+		exp_action = torch.min(exp_action, torch.tensor(100.0).to(exp_action.device))  # [batch_size, 1]
+		# _, action_log_prob = self.get_action(observations, return_log_probs=True)  # [batch_size, 1]
+		action_feats = self.model_actor(observations)  # [batch_size, 512]
+		action_dist = self.actor_dist(action_feats)
+		action_log_prob = action_dist.log_probs(actions)
+		actor_loss = -(exp_action * action_log_prob).mean()  # [1]
+
 		self.optimizer_actor.zero_grad(set_to_none=True)
 		actor_loss.backward()
 		self.optimizer_actor.step()

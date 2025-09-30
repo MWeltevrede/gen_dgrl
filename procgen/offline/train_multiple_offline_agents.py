@@ -124,9 +124,9 @@ for i, id in enumerate(args.agent_ids):
 
         # Train agent
         for epoch in range(curr_epochs, args.epochs):
-            if args.algo in "iql_greedy":
-                # reset actor every epoch
-                agent.reset_actor()
+            #if args.algo in "iql_greedy":
+            #    # reset actor every epoch
+            #    agent.reset_actor()
                 
             agent.train()
             epoch_loss = 0

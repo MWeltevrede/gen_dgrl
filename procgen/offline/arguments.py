@@ -8,7 +8,7 @@ import argparse
 from utils.utils import str2bool
 
 parser = argparse.ArgumentParser(description="Train offline agents")
-parser.add_argument("--algo", type=str, default="bc", choices=["bc", "cql", "dt", "bct", "bcq", "offlinedqn", "iql", "iql_greedy", "xql"], help="Algorithm to train")
+parser.add_argument("--algo", type=str, default="bc", choices=["bc", "cql", "dt", "bct", "bcq", "offlinedqn", "iql", "iql_greedy", "iql_concistency", "iql_ensemble", "xql"], help="Algorithm to train")
 parser.add_argument("--dataset", type=str, default="data/dataset.hdf5", help="Path to dataset")
 parser.add_argument("--percentile", type=float, default=1.0, help="percentile for top% training")
 parser.add_argument("--dataset_size", type=int, default=1000000, help="Size of dataset")
@@ -54,6 +54,7 @@ parser.add_argument("--bcq_threshold", type=float, default=0.3, help="BCQ thresh
 # IQL
 parser.add_argument("--iql_temperature", type=float, default=0.1, help="IQL temperature for action selection")
 parser.add_argument("--iql_expectile", type=float, default=0.8, help="IQL Expectile Loss")
+parser.add_argument("--iql_concistency", type=float, default=0.01, help="coefficient used in the concistency loss")
 
 # DT
 parser.add_argument("--dt_context_length", type=int, default=128, help="context length for the agent")

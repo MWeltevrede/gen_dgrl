@@ -138,8 +138,10 @@ def xpid_from_params(p, prefix="", algo="", is_single=False):
             algo_prefix = f"{algo_prefix}-t{p['bcq_threshold']}"
             if p["agent_model"] == "bcqresnetbase":
                 algo_prefix = f"{algo_prefix}-res"
-        elif algo in ["iql", "iql_greedy"]:
+        elif algo in ["iql", "iql_greedy", "iql_ensemble"]:
             algo_prefix = f"{algo_prefix}-t{p['iql_temperature']}-e{p['iql_expectile']}"
+        elif algo in ["iql_concistency"]:
+            algo_prefix = f"{algo_prefix}-t{p['iql_temperature']}-e{p['iql_expectile']}-c{p['iql_concistency']}"
         elif algo in ["dt", "bct"]:
             algo_prefix = f"{algo_prefix}-cl{p['dt_context_length']}-er{p['dt_eval_ret']}"
     elif algo == "ppo":
