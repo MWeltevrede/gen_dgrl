@@ -714,7 +714,7 @@ class IQLEnsemble(IQL):
 				self.target_q2.load_state_dict(self.model_q2.state_dict())
 
 		# 3. Calculate Actor Loss
-		actor_u_diff = all_q_avg.gather(1, actions) - torch.max(all_q_avg, dim=-1, keepdim=True)
+		actor_u_diff = all_q_avg.gather(1, actions) - torch.max(all_q_avg, dim=-1, keepdim=True)[0]
 		exp_action = torch.exp(actor_u_diff.detach() * self.iql_temperature)  # [batch_size, 1]
 		# take minimum of exp_action and 100.0 to avoid overflow
 		exp_action = torch.min(exp_action, torch.tensor(100.0).to(exp_action.device))  # [batch_size, 1]
