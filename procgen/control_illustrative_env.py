@@ -13,8 +13,10 @@ def segment_distance(p, p1, p2):
 	Code from https://github.com/madphysicist/haggis/blob/992fd229799f90fef44d00cbb62820fc8a84bcf4/src/haggis/math.py#L571
 	'''
 	seg = p2 - p1
+	if sum(seg) == 0:
+		return np.sqrt(np.sum((p - p1)**2, keepdims=True))
 	norm2_seg = (seg * seg).sum(keepdims=True)
-	t = ((p - p1) * seg).sum(keepdims=True) / norm2_seg
+	t = ((p - p1) * seg).sum(keepdims=True) / (norm2_seg)
 	p0 = p1 + t * seg
 
 
@@ -48,7 +50,7 @@ class ControlIllustrativeCMDP(gym.Env):
 	- shoulder location along unit circle: the angle that defines the position of the shoulder along the unit circle. 
 											Zero degrees is equal to position (0,1). Defined as positive counter-clockwise.
 	'''
-	def __init__(self, tasks=None, g=10.0, n_actions=None, simple_r_function=False, **kwargs):
+	def __init__(self, tasks=None, g=10.0, n_actions=None, simple_r_function=False, epsilon=0.01, terminal=True, **kwargs):
 		self.tasks = tasks
 		self._current_task_id = 0
 		if tasks is None:
@@ -58,9 +60,11 @@ class ControlIllustrativeCMDP(gym.Env):
 		else:
 			self.num_tasks = len(tasks)
 		self._target_location = np.array([0.0,0.0])
-		self._epsilon = 0.01
+		self._epsilon = epsilon
+		#self._epsilon = 0.02
 		self.step_counter = 0
 		self.simple_r_function = simple_r_function
+		self.terminal = terminal
 
 		# self._target_region = []
 		# for dx in np.linspace(-0.1, 0.1, 50):
@@ -167,20 +171,26 @@ class ControlIllustrativeCMDP(gym.Env):
 		terminated = False
 		distance_to_target = segment_distance(self._target_location, previous_hand_loc, self.hand_loc)[0]
 		if distance_to_target < self._epsilon:
-			terminated = True
-			reward = 1.0
-		elif self.simple_r_function is False and distance_to_target < self.smallest_segment_dist:
-			reward = (1. - (distance_to_target / 2.)) / (TIMEOUT_STEPS / 2.)
+			if self.terminal:
+				terminated = True
+				reward = 1.0
+			else:
+				#reward = 1 / 25.
+				reward = 1.0
+		#elif self.simple_r_function is False and distance_to_target < self.smallest_segment_dist:
+		elif self.simple_r_function is False:
+			#reward = (1. - (distance_to_target / 2.)) / (TIMEOUT_STEPS / 2.)
+			reward = (.5 - (distance_to_target)) / (TIMEOUT_STEPS / 2.)
 			self.smallest_segment_dist = distance_to_target
 		else:
 			reward = 0.0
-			# reward = -(distance_to_target / 2.) / (TIMEOUT_STEPS / 2.)
+			#reward = -(distance_to_target / 2.) / (TIMEOUT_STEPS / 2.)
 		self.ep_rewards += reward
 
 		self.step_counter += 1
 
 		truncated = False
-		if self.step_counter >= TIMEOUT_STEPS:
+		if (not self.terminal and self.step_counter >= 150) or self.step_counter >= TIMEOUT_STEPS:
 			truncated = True
 		done = terminated or truncated
 
