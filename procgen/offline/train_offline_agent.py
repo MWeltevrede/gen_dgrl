@@ -29,8 +29,8 @@ from utils.early_stopper import EarlyStop
 from gym.envs.registration import register
 import gym
 register(
-     id="ControlIllustrativeCMDP-v0",
-     entry_point="control_illustrative_env:ControlIllustrativeCMDP",
+	 id="ControlIllustrativeCMDP-v0",
+	 entry_point="control_illustrative_env:ControlIllustrativeCMDP",
 )
 
 args = parser.parse_args()
@@ -44,24 +44,24 @@ torch.backends.cudnn.benchmark = True
 set_seed(args.seed)
 
 if args.xpid is None:
-    args.xpid = "lr-%s" % time.strftime("%Y%m%d-%H%M%S")
+	args.xpid = "lr-%s" % time.strftime("%Y%m%d-%H%M%S")
 
 # Setup wandb and offline logging
 with open("wandb_info.txt") as file:
-    lines = [line.rstrip() for line in file]
-    # os.environ["WANDB_BASE_URL"] = lines[0]
-    os.environ["WANDB_API_KEY"] = lines[1]
-    os.environ["WANDB_START_METHOD"] = "thread"
-    wandb_group = args.xpid[:-2][:126]  # '-'.join(args.xpid.split('-')[:-2])[:120]
-    wandb_project = "Pessimism"
-    wandb.init(project=wandb_project, entity=lines[2], config=args, name=args.xpid, group=wandb_group, tags=[args.algo, args.env_name, *args.wandb_tags])
+	lines = [line.rstrip() for line in file]
+	# os.environ["WANDB_BASE_URL"] = lines[0]
+	os.environ["WANDB_API_KEY"] = lines[1]
+	os.environ["WANDB_START_METHOD"] = "thread"
+	wandb_group = args.xpid[:-2][:126]  # '-'.join(args.xpid.split('-')[:-2])[:120]
+	wandb_project = "Pessimism"
+	wandb.init(project=wandb_project, entity=lines[2], config=args, name=args.xpid, group=wandb_group, tags=[args.algo, args.env_name, *args.wandb_tags])
 
 log_dir = os.path.expandvars(os.path.expanduser(os.path.join(args.save_path, args.env_name)))
 # check if final_model.pt already exists in the log_dir
 if os.path.exists(os.path.join(log_dir, args.xpid, "final_model.pt")):
-    # exit if final_model.pt already exists
-    print("Final model already exists in the log_dir")
-    exit(0)
+	# exit if final_model.pt already exists
+	print("Final model already exists in the log_dir")
+	exit(0)
 filewriter = FileWriter(xpid=args.xpid, xp_args=args.__dict__, rootdir=log_dir)
 filewriter.final_test_eval_fieldnames = ["final_test_ret", "final_train_ret", "final_val_ret", "final_total_variation"]
 filewriter._finaltestwriter = csv.DictWriter(filewriter._finaltestfile, fieldnames=filewriter.final_test_eval_fieldnames)
@@ -69,8 +69,8 @@ filewriter._finaltestwriter.writeheader()
 
 
 def log_stats(stats):
-    filewriter.log(stats)
-    wandb.log(stats)
+	filewriter.log(stats)
+	wandb.log(stats)
 
 
 # logging.getLogger().setLevel(logging.INFO)
@@ -96,28 +96,29 @@ test_tasks = tasks_dict['test']
 pin_dataloader_memory = True
 extra_config = None
 if args.algo in ["dt", "bct"]:
-    dataset = OfflineDTDataset(
-        capacity=args.dataset_size, episodes_dir_path=os.path.join(args.dataset, args.env_name), percentile=args.percentile, context_len=args.dt_context_length, rtg_noise_prob=args.dt_rtg_noise_prob
-    )
-    pin_dataloader_memory = True
-    extra_config = {"train_data_vocab_size": dataset.vocab_size, "train_data_block_size": dataset._block_size, "max_timesteps": max(dataset._timesteps), "dataset_size": len(dataset)}
-    eval_max_return = dataset.get_max_return(multiplier=args.dt_eval_ret)
-    print("[DEBUG] Setting max eval return to ", eval_max_return)
+	dataset = OfflineDTDataset(
+		capacity=args.dataset_size, episodes_dir_path=os.path.join(args.dataset, args.env_name), percentile=args.percentile, context_len=args.dt_context_length, rtg_noise_prob=args.dt_rtg_noise_prob
+	)
+	pin_dataloader_memory = True
+	extra_config = {"train_data_vocab_size": dataset.vocab_size, "train_data_block_size": dataset._block_size, "max_timesteps": max(dataset._timesteps), "dataset_size": len(dataset)}
+	eval_max_return = dataset.get_max_return(multiplier=args.dt_eval_ret)
+	print("[DEBUG] Setting max eval return to ", eval_max_return)
 else:
-    if not set_id == -1:
-        dataset = OfflineDataset(
-            capacity=args.dataset_size, episodes_dir_path=os.path.join(args.dataset, args.env_name + f'_{set_id}'), percentile=args.percentile
-        )
-    else:
-        dataset = OfflineDataset(
-            capacity=args.dataset_size, episodes_dir_path=os.path.join(args.dataset, args.env_name), percentile=args.percentile
-        )
+	if not set_id == -1:
+		dataset = OfflineDataset(
+			capacity=args.dataset_size, episodes_dir_path=os.path.join(args.dataset, args.env_name + f'_{set_id}'), percentile=args.percentile
+		)
+	else:
+		dataset = OfflineDataset(
+			capacity=args.dataset_size, episodes_dir_path=os.path.join(args.dataset, args.env_name), percentile=args.percentile
+		)
 dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, pin_memory=pin_dataloader_memory) #, num_workers=8)
 
 print("Dataset Loaded!")
 
 ## create Illustrative env
-env_kwargs = {'n_actions':3, 'simple_r_function':True}
+#env_kwargs = {'n_actions':3, 'simple_r_function':True}
+env_kwargs = {'n_actions':None, 'simple_r_function':True, 'epsilon': 0.01, 'terminal': True}
 env = gym.make('ControlIllustrativeCMDP-v0', tasks=train_tasks, **env_kwargs)
 
 curr_epochs = 0
@@ -137,119 +138,161 @@ print("Model Created!")
 
 # load checkpoint and resume if resume flag is true
 if args.resume and os.path.exists(os.path.join(args.save_path, args.env_name, args.xpid, "model.pt")):
-    curr_epochs = agent.load(os.path.join(args.save_path, args.env_name, args.xpid, "model.pt"))
-    last_logged_update_count_at_restart = filewriter.latest_update_count()
-    print(f"Resuming checkpoint from Epoch {curr_epochs}, logged update count {last_logged_update_count_at_restart}")  
+	curr_epochs = agent.load(os.path.join(args.save_path, args.env_name, args.xpid, "model.pt"))
+	last_logged_update_count_at_restart = filewriter.latest_update_count()
+	print(f"Resuming checkpoint from Epoch {curr_epochs}, logged update count {last_logged_update_count_at_restart}")  
 elif args.resume and os.path.exists(os.path.join(args.save_path, args.env_name, args.xpid, "final_model.pt")):
-    curr_epochs = agent.load(os.path.join(args.save_path, args.env_name, args.xpid, "final_model.pt"))
-    last_logged_update_count_at_restart = filewriter.latest_update_count()
-    print(f"Resuming checkpoint from Epoch {curr_epochs}, logged update count {last_logged_update_count_at_restart}")
+	curr_epochs = agent.load(os.path.join(args.save_path, args.env_name, args.xpid, "final_model.pt"))
+	last_logged_update_count_at_restart = filewriter.latest_update_count()
+	print(f"Resuming checkpoint from Epoch {curr_epochs}, logged update count {last_logged_update_count_at_restart}")
 else:
-    print("Starting from scratch!")
+	print("Starting from scratch!")
 
 if args.early_stop:
-    early_stopper = EarlyStop(wait_epochs=10, min_delta=0.1)
+	early_stopper = EarlyStop(wait_epochs=10, min_delta=0.1)
 
 # Train agent
 for epoch in range(curr_epochs, args.epochs):
-    agent.train()
-    epoch_loss = 0
-    epoch_start_time = time.time()
-    for observations, actions, rewards, next_observations, dones in dataloader:
-        if len(actions.shape) == 1:
-            actions = actions.unsqueeze(dim=1)
-        if len(rewards.shape) == 1:
-            rewards = rewards.unsqueeze(dim=1)
-        if len(dones.shape) == 1:
-            dones = dones.unsqueeze(dim=1)
-        observations, actions, rewards, next_observations, dones = (
-            observations.to(device),
-            actions.to(device),
-            rewards.to(device),
-            next_observations.to(device),
-            dones.to(device),
-        )
-        stats_dict = agent.train_step(
-            observations.float(), actions, rewards.float(), next_observations.float(), dones.float()
-        )
-        epoch_loss += stats_dict["loss"]
-    epoch_end_time = time.time()
+	agent.train()
+	epoch_loss = 0
+	epoch_start_time = time.time()
+	for observations, actions, rewards, next_observations, dones in dataloader:
+		if len(actions.shape) == 1:
+			actions = actions.unsqueeze(dim=1)
+		if len(rewards.shape) == 1:
+			rewards = rewards.unsqueeze(dim=1)
+		if len(dones.shape) == 1:
+			dones = dones.unsqueeze(dim=1)
+		observations, actions, rewards, next_observations, dones = (
+			observations.to(device),
+			actions.to(device),
+			rewards.to(device),
+			next_observations.to(device),
+			dones.to(device),
+		)
+		stats_dict = agent.train_step(
+			observations.float(), actions, rewards.float(), next_observations.float(), dones.float()
+		)
+		epoch_loss += stats_dict["loss"]
+	epoch_end_time = time.time()
 
-    # evaluate the agent on illustrative environment
-    if epoch % args.eval_freq == 0:
-        inf_start_time = time.time()
-        test_mean_perf, test_mean_len = eval_agent(
-            agent,
-            device,
-            test_tasks,
-            eval_eps=args.eval_eps,
-            env_kwargs=env_kwargs
-        )
-        train_mean_perf, train_mean_len = eval_agent(
-            agent,
-            device,
-            train_tasks,
-            eval_eps=args.eval_eps,
-            env_kwargs=env_kwargs
-        )
-        inf_end_time = time.time()
+	# evaluate the agent on illustrative environment
+	if epoch % args.eval_freq == 0:
+		inf_start_time = time.time()
+		test_mean_perf, test_mean_len = eval_agent(
+			agent,
+			device,
+			test_tasks,
+			eval_eps=args.eval_eps,
+			env_kwargs=env_kwargs
+		)
+		train_mean_perf, train_mean_len = eval_agent(
+			agent,
+			device,
+			train_tasks,
+			eval_eps=args.eval_eps,
+			env_kwargs=env_kwargs
+		)
+		inf_end_time = time.time()
 
-        print(
-            f"Epoch: {epoch + 1} | Loss: {epoch_loss / len(dataloader)} | Time: {epoch_end_time - epoch_start_time} \
-                | Train Returns (mean): {train_mean_perf} | Test Returns (mean): {test_mean_perf}"
-        )
+		print(
+			f"Epoch: {epoch + 1} | Loss: {epoch_loss / len(dataloader)} | Time: {epoch_end_time - epoch_start_time} \
+				| Train Returns (mean): {train_mean_perf} | Test Returns (mean): {test_mean_perf}"
+		)
 
-        print(epoch+1)
-        if (epoch+1) > last_logged_update_count_at_restart:
-            stats_dict.update(
-                {
-                    "epoch": epoch + 1,
-                    "train_loss": epoch_loss / len(dataloader),
-                    "epoch_time": epoch_end_time - epoch_start_time,
-                    "inf_time": inf_end_time - inf_start_time,
-                    "train_rets_mean": train_mean_perf,
-                    "train_len_mean": train_mean_len,
-                    "test_rets_mean": test_mean_perf,
-                    "test_len_mean": test_mean_len
-                }
-            )
-            log_stats(stats_dict)
+		print(epoch+1)
+		if (epoch+1) > last_logged_update_count_at_restart:
+			stats_dict.update(
+				{
+					"epoch": epoch + 1,
+					"train_loss": epoch_loss / len(dataloader),
+					"epoch_time": epoch_end_time - epoch_start_time,
+					"inf_time": inf_end_time - inf_start_time,
+					"train_rets_mean": train_mean_perf,
+					"train_len_mean": train_mean_len,
+					"test_rets_mean": test_mean_perf,
+					"test_len_mean": test_mean_len
+				}
+			)
+			log_stats(stats_dict)
 
-    # Save agent and number of epochs
-    if args.resume and (epoch+1) % args.ckpt_freq == 0:
-        curr_epochs = epoch + 1
-        agent.save(num_epochs=curr_epochs, path=os.path.join(args.save_path, args.env_name, args.xpid, "model.pt"))
-        agent.save(num_epochs=curr_epochs, path=os.path.join(args.save_path, args.env_name, args.xpid, f"model_{epoch}.pt"))
-                
+	# Save agent and number of epochs
+	if args.resume and (epoch+1) % args.ckpt_freq == 0:
+		curr_epochs = epoch + 1
+		agent.save(num_epochs=curr_epochs, path=os.path.join(args.save_path, args.env_name, args.xpid, "model.pt"))
+		agent.save(num_epochs=curr_epochs, path=os.path.join(args.save_path, args.env_name, args.xpid, f"model_{epoch}.pt"))
+				
 test_mean_perf, test_mean_len = eval_agent(agent, device, test_tasks, eval_eps=args.eval_eps, env_kwargs=env_kwargs)
 train_mean_perf, train_mean_len = eval_agent(agent, device, train_tasks, eval_eps=args.eval_eps, env_kwargs=env_kwargs)
 
-## Measure rotational invariance (for the group C4)
-#test_tasks_split_by_pose = []
-#current_pose = (test_tasks[0][0], test_tasks[0][1])
-#temp_tasks = [test_tasks[0]]
-#for tt in test_tasks:
-#    # assume different rotations of the same pose follow each other sequentially
-#    if not (tt[0], tt[1]) == current_pose:
-#        test_tasks_split_by_pose.append(temp_tasks)
-#        temp_tasks = []
-#        temp_tasks.append(tt)
-#        current_pose = (tt[0], tt[1])
-#    else:
-#    	temp_tasks.append(tt)
-        
-#total_variation = []
-#for tasksets in test_tasks_split_by_pose:
-#	obs = []
-#	env = gym.make('ControlIllustrativeCMDP-v0', tasks=tasksets, n_actions=5, simple_r_function=False)
-#	for _ in range(len(tasksets)):
-#		obs.append(env.reset())
-#	obs = np.array(obs)
-#	obs = torch.as_tensor(obs, device=device)
-#	with torch.no_grad():
-#		output = agent.eval_step(obs, eps=0)
-#	total_variation.append(np.trace(np.cov(output, rowvar=False)))
-#total_variation = np.mean(total_variation)
+
+#if 'iql' in args.algo:
+#	# Train the final policy
+#	print(f"Extracting the Actor after training")
+#	agent.reset_actor()
+#	for epoch in range(0, 30):
+#		agent.train()
+#		epoch_loss = 0
+#		epoch_start_time = time.time()
+#		for observations, actions, rewards, next_observations, dones in dataloader:
+#			if len(actions.shape) == 1:
+#				actions = actions.unsqueeze(dim=1)
+#			if len(rewards.shape) == 1:
+#				rewards = rewards.unsqueeze(dim=1)
+#			if len(dones.shape) == 1:
+#				dones = dones.unsqueeze(dim=1)
+#			observations, actions, rewards, next_observations, dones = (
+#				observations.to(device),
+#				actions.to(device),
+#				rewards.to(device),
+#				next_observations.to(device),
+#				dones.to(device),
+#			)
+#			stats_dict = agent.train_actor(
+#				observations.float(), actions, rewards.float(), next_observations.float(), dones.float()
+#			)
+#			epoch_loss += stats_dict["actor_actor_loss"]
+#		epoch_end_time = time.time()
+
+#		# evaluate the agent on illustrative environment
+#		if epoch % 1 == 0:
+#			inf_start_time = time.time()
+#			test_mean_perf, test_mean_len = eval_agent(
+#				agent,
+#				device,
+#				test_tasks,
+#				eval_eps=args.eval_eps,
+#				env_kwargs=env_kwargs
+#			)
+#			train_mean_perf, train_mean_len = eval_agent(
+#				agent,
+#				device,
+#				train_tasks,
+#				eval_eps=args.eval_eps,
+#				env_kwargs=env_kwargs
+#			)
+#			inf_end_time = time.time()
+
+#			print(
+#				f"Epoch: {epoch + 1} | Loss: {epoch_loss / len(dataloader)} | Time: {epoch_end_time - epoch_start_time} \
+#					| Train Returns (mean): {train_mean_perf} | Test Returns (mean): {test_mean_perf}"
+#			)
+
+#			print(epoch+1)
+#			stats_dict.update(
+#				{
+#					"actor_epoch": epoch + 1,
+#					"actor_train_loss": epoch_loss / len(dataloader),
+#					#"epoch_time": epoch_end_time - epoch_start_time,
+#					#"inf_time": inf_end_time - inf_start_time,
+#					"actor_train_rets_mean": train_mean_perf,
+#					"actor_train_len_mean": train_mean_len,
+#					"actor_test_rets_mean": test_mean_perf,
+#					"actor_test_len_mean": test_mean_len
+#				}
+#			)
+#			wandb.log(stats_dict)
+
 
 total_variation = []
 obs = []
@@ -259,16 +302,18 @@ for _ in range(len(test_tasks)):
 obs = np.array(obs)
 obs = torch.as_tensor(obs, device=device)
 with torch.no_grad():
-	output = agent.model_base(obs).mean(dim=0)
+	#output = agent.model_base(obs).mean(dim=0)
+	output = agent.actor_dist(agent.model_actor(obs))
+	output = torch.concat([output.mean, output.stddev], dim=-1)
 total_variation.append(np.trace(np.cov(output.cpu().numpy(), rowvar=False)))
 total_variation = np.mean(total_variation)
 
 
 wandb.log({"final_total_variation": total_variation, "final_test_ret": test_mean_perf, "final_test_len": test_mean_len, "final_train_ret": train_mean_perf, "final_train_len": train_mean_len}, step=(epoch + 1))
 filewriter.log_final_test_eval({
-        'final_test_ret': test_mean_perf,
-        'final_train_ret': train_mean_perf,
-        'final_total_variation': total_variation
-    })
-if args.resume:
-    agent.save(num_epochs=args.epochs, path=os.path.join(args.save_path, args.env_name, args.xpid, "final_model.pt"))
+		'final_test_ret': test_mean_perf,
+		'final_train_ret': train_mean_perf,
+		'final_total_variation': total_variation
+	})
+#if args.resume:
+agent.save(num_epochs=args.epochs, path=os.path.join(args.save_path, args.env_name, args.xpid, "final_model.pt"))

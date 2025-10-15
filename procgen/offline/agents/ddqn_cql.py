@@ -26,7 +26,9 @@ class CQL:
 				 eps_end, 
 				 eps_decay, 
 				 cql_alpha,
-     			 perform_polyak_update):
+     			 perform_polyak_update, 
+				 normalize_obs, 
+				 activation):
 		"""
 		Initialize the agent.
 
@@ -50,9 +52,11 @@ class CQL:
 		self.gamma = gamma
 		self.target_update_freq = target_update_freq
 		self.tau = tau
+		self.normalize_obs = normalize_obs
+		self.activation = activation
 		
-		self.model = AGENT_CLASSES[agent_model](observation_space, action_space, hidden_size)
-		self.target_model = AGENT_CLASSES[agent_model](observation_space, action_space, hidden_size)
+		self.model = AGENT_CLASSES[agent_model](observation_space, action_space, hidden_size, normalize_obs=self.normalize_obs, activation=self.activation,)
+		self.target_model = AGENT_CLASSES[agent_model](observation_space, action_space, hidden_size, normalize_obs=self.normalize_obs, activation=self.activation,)
 		
 		self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
 		

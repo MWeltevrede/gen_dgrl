@@ -29,7 +29,7 @@ parser.add_argument(
 parser.add_argument(
     "--grid_config",
     type=str,
-    choices=["bc", "ppo", "bcq", "cql", "iql", "dt", "bct"],
+    choices=["bc", "ppo", "bcq", "cql", "iql", "iql_ensemble", "dt", "bct"],
     help="Name of the .json config for hyperparameter search-grid.",
 )
 parser.add_argument(

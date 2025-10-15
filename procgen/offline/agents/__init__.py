@@ -8,7 +8,7 @@ from offline.agents.bc import BehavioralCloning, BehavioralCloningContinuous
 from offline.agents.bc_n import BehavioralCloningEnsemble, BehavioralCloningEnsembleContinuous, ValueDistilEnsemble
 from offline.agents.bcq import BCQ
 from offline.agents.ddqn_cql import CQL
-from offline.agents.iql import IQL
+from offline.agents.iql import IQL, IQLEnsemble
 from offline.agents.dt import DecisionTransformer
 
 def _create_agent(args, env, extra_config):
@@ -51,13 +51,16 @@ def _create_agent(args, env, extra_config):
 				   eps_end=args.eps_end,
 				   eps_decay=args.eps_decay,
 				   cql_alpha=args.cql_alpha,
-				   perform_polyak_update=args.perform_polyak_update)
+				   perform_polyak_update=args.perform_polyak_update,
+				   normalize_obs=args.normalize_obs, 
+				   activation=args.activation)
 	elif agent_name == "iql":
 		return IQL(env.observation_space, 
-				   env.action_space.n, 
+				   env.action_space, 
 				   args.lr, 
 				   args.agent_model, 
 				   args.hidden_size,
+				   channels=args.channels,
 				   gamma=args.gamma,
 				   target_update_freq=args.target_update_freq,
 				   tau=args.tau,
@@ -66,7 +69,29 @@ def _create_agent(args, env, extra_config):
 				   eps_decay=args.eps_decay,
 				   iql_temperature=args.iql_temperature,
 				   iql_expectile=args.iql_expectile,
-				   perform_polyak_update=args.perform_polyak_update)
+				   perform_polyak_update=args.perform_polyak_update,
+				   normalize_obs=args.normalize_obs, 
+				   activation=args.activation)
+	elif agent_name == "iql_ensemble":
+		return IQLEnsemble(env.observation_space, 
+				   env.action_space, 
+				   args.lr, 
+				   args.agent_model, 
+				   args.hidden_size,
+				   channels=args.channels,
+				   gamma=args.gamma,
+				   target_update_freq=args.target_update_freq,
+				   tau=args.tau,
+				   eps_start=args.eps_start,
+				   eps_end=args.eps_end,
+				   eps_decay=args.eps_decay,
+				   iql_temperature=args.iql_temperature,
+				   iql_expectile=args.iql_expectile,
+				   perform_polyak_update=args.perform_polyak_update,
+				   normalize_obs=args.normalize_obs, 
+				   activation=args.activation,
+				   ensemble_size=args.iql_ensemble_size,
+				   use_value=args.iql_use_value)
 	elif agent_name in ["dt", "bct"]:
 		return DecisionTransformer(env.observation_space,
 								   env.action_space.n, 
