@@ -125,7 +125,7 @@ def parse_args():
 
 
 def xpid_from_params(p, prefix="", algo="", is_single=False):
-	env_prefix = f"{p['env_name']}-{p['distribution_mode']}-{p['num_levels']}"
+	env_prefix = f"{p['env_name']}"
 	
 	"""python function which converts long integers into short strings
 		Example: 1000000 -> 1M, 1000 -> 1K, etc.
@@ -139,10 +139,10 @@ def xpid_from_params(p, prefix="", algo="", is_single=False):
 			return f"{n}"
 		
 	if "dataset_size" in p:
-		env_prefix = f"{env_prefix}-d{short_int(p['dataset_size'])}"
+		env_prefix = f"{env_prefix}"
 
 	if algo in ["bc", "cql", "bcq", "iql", "iql_ensemble", "dt", "bct"]:
-		algo_prefix = f"{algo}-p{p['percentile']}-lr{p['lr']}-bs{p['batch_size']}-{p['agent_model']}"
+		algo_prefix = f"{algo}-lr{p['lr']}-bs{p['batch_size']}"
 		if algo in ["cql", "bcq", "iql", "iql_ensemble"]:
 			algo_prefix = f"{algo_prefix}-tuf{p['target_update_freq']}"
 			if p['perform_polyak_update']:
@@ -158,7 +158,10 @@ def xpid_from_params(p, prefix="", algo="", is_single=False):
 			if p['algo'] == "iql":
 				algo_prefix = f"{algo_prefix}-t{p['iql_temperature']}-e{p['iql_expectile']}"
 			else:
-				algo_prefix = f"{algo_prefix}-t{p['iql_temperature']}-e{p['iql_expectile']}-s{p['iql_ensemble_size']}-uv{p['iql_use_value']}"
+				if p['iql_critic_da'] == 'none' and p['iql_actor_da'] == 'none':
+					algo_prefix = f"{algo_prefix}-t{p['iql_temperature']}-e{p['iql_expectile']}-cs{p['iql_value_ensemble_size']}-as{p['iql_actor_ensemble_size']}-uv{p['iql_use_value']}"
+				else:
+					algo_prefix = f"{algo_prefix}-t{p['iql_temperature']}-e{p['iql_expectile']}-cs{p['iql_value_ensemble_size']}-as{p['iql_actor_ensemble_size']}-uv{p['iql_use_value']}-cda{p['iql_critic_da']}-ccc{p['iql_critic_concistency_coef']}-ada{p['iql_actor_da']}-acc{p['iql_actor_concistency_coef']}"
 		elif algo in ["dt", "bct"]:
 			algo_prefix = f"{algo_prefix}-cl{p['dt_context_length']}-er{p['dt_eval_ret']}"
 	elif algo == "ppo":

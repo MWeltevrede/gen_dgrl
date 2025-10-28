@@ -25,6 +25,7 @@ from offline.test_offline_agent import eval_agent, eval_DT_agent
 from utils.filewriter import FileWriter
 from utils.utils import set_seed
 from utils.early_stopper import EarlyStop
+import cProfile, pstats
 
 from gym.envs.registration import register
 import gym
@@ -57,11 +58,11 @@ with open("wandb_info.txt") as file:
 	wandb.init(project=wandb_project, entity=lines[2], config=args, name=args.xpid, group=wandb_group, tags=[args.algo, args.env_name, *args.wandb_tags])
 
 log_dir = os.path.expandvars(os.path.expanduser(os.path.join(args.save_path, args.env_name)))
-# check if final_model.pt already exists in the log_dir
-if os.path.exists(os.path.join(log_dir, args.xpid, "final_model.pt")):
-	# exit if final_model.pt already exists
-	print("Final model already exists in the log_dir")
-	exit(0)
+## check if final_model.pt already exists in the log_dir
+#if os.path.exists(os.path.join(log_dir, args.xpid, "final_model.pt")):
+#	# exit if final_model.pt already exists
+#	print("Final model already exists in the log_dir")
+#	exit(0)
 filewriter = FileWriter(xpid=args.xpid, xp_args=args.__dict__, rootdir=log_dir)
 filewriter.final_test_eval_fieldnames = ["final_test_ret", "final_train_ret", "final_val_ret", "final_total_variation"]
 filewriter._finaltestwriter = csv.DictWriter(filewriter._finaltestfile, fieldnames=filewriter.final_test_eval_fieldnames)
@@ -75,8 +76,11 @@ def log_stats(stats):
 
 # logging.getLogger().setLevel(logging.INFO)
 
-#set_id = int(args.xpid.split('_')[-1])
-set_id = -1
+#if args.env_name == "control_illustrative_eps0.5_symmetric" or args.env_name == "control_illustrative_eps0.5_non_symmetric":
+if "data_symmetry" in args.dataset:
+	set_id = int(args.xpid.split('_')[-1])
+else:
+	set_id = -1
 #with open(f'datasets/task_sets_{set_id}.json', 'r') as file:
 #	tasks_dict = json.load(file)
 #with open(f'datasets/task_sets_base.json', 'r') as file:
@@ -85,9 +89,12 @@ env_name_split = args.env_name.split('_')
 assert env_name_split[0] == 'control'
 assert env_name_split[1] == 'illustrative'
 env_type = '_'.join(args.env_name.split('_')[2:])
-with open(f'{args.dataset}/task_sets_{env_type}.json', 'r') as file:
-#with open(f'{args.dataset}/task_sets_base.json', 'r') as file:
-	tasks_dict = json.load(file)
+if set_id == -1:
+	with open(f'{args.dataset}/task_sets_{env_type}.json', 'r') as file:
+		tasks_dict = json.load(file)
+else:
+	with open(f'{args.dataset}/task_sets_{env_type}_{set_id}.json', 'r') as file:
+		tasks_dict = json.load(file)
 
 train_tasks = tasks_dict['base']
 test_tasks = tasks_dict['test']
@@ -118,7 +125,7 @@ print("Dataset Loaded!")
 
 ## create Illustrative env
 #env_kwargs = {'n_actions':3, 'simple_r_function':True}
-env_kwargs = {'n_actions':None, 'simple_r_function':True, 'epsilon': 0.01, 'terminal': True}
+env_kwargs = {'n_actions':None, 'simple_r_function':True, 'epsilon': 0.02, 'terminal': True}
 env = gym.make('ControlIllustrativeCMDP-v0', tasks=train_tasks, **env_kwargs)
 
 curr_epochs = 0
@@ -152,6 +159,7 @@ if args.early_stop:
 	early_stopper = EarlyStop(wait_epochs=10, min_delta=0.1)
 
 # Train agent
+#with cProfile.Profile() as pr:
 for epoch in range(curr_epochs, args.epochs):
 	agent.train()
 	epoch_loss = 0
@@ -226,75 +234,81 @@ test_mean_perf, test_mean_len = eval_agent(agent, device, test_tasks, eval_eps=a
 train_mean_perf, train_mean_len = eval_agent(agent, device, train_tasks, eval_eps=args.eval_eps, env_kwargs=env_kwargs)
 
 
-#if 'iql' in args.algo:
-#	# Train the final policy
-#	print(f"Extracting the Actor after training")
-#	agent.reset_actor()
-#	for epoch in range(0, 30):
-#		agent.train()
-#		epoch_loss = 0
-#		epoch_start_time = time.time()
-#		for observations, actions, rewards, next_observations, dones in dataloader:
-#			if len(actions.shape) == 1:
-#				actions = actions.unsqueeze(dim=1)
-#			if len(rewards.shape) == 1:
-#				rewards = rewards.unsqueeze(dim=1)
-#			if len(dones.shape) == 1:
-#				dones = dones.unsqueeze(dim=1)
-#			observations, actions, rewards, next_observations, dones = (
-#				observations.to(device),
-#				actions.to(device),
-#				rewards.to(device),
-#				next_observations.to(device),
-#				dones.to(device),
-#			)
-#			stats_dict = agent.train_actor(
-#				observations.float(), actions, rewards.float(), next_observations.float(), dones.float()
-#			)
-#			epoch_loss += stats_dict["actor_actor_loss"]
-#		epoch_end_time = time.time()
+	#if 'iql' in args.algo:
+	#	# Train the final policy
+	#	print(f"Extracting the Actor after training")
+	#	agent.reset_actor()
+	#	for epoch in range(0, 30):
+	#		agent.train()
+	#		epoch_loss = 0
+	#		epoch_start_time = time.time()
+	#		for observations, actions, rewards, next_observations, dones in dataloader:
+	#			if len(actions.shape) == 1:
+	#				actions = actions.unsqueeze(dim=1)
+	#			if len(rewards.shape) == 1:
+	#				rewards = rewards.unsqueeze(dim=1)
+	#			if len(dones.shape) == 1:
+	#				dones = dones.unsqueeze(dim=1)
+	#			observations, actions, rewards, next_observations, dones = (
+	#				observations.to(device),
+	#				actions.to(device),
+	#				rewards.to(device),
+	#				next_observations.to(device),
+	#				dones.to(device),
+	#			)
+	#			stats_dict = agent.train_actor(
+	#				observations.float(), actions, rewards.float(), next_observations.float(), dones.float()
+	#			)
+	#			epoch_loss += stats_dict["actor_actor_loss"]
+	#		epoch_end_time = time.time()
 
-#		# evaluate the agent on illustrative environment
-#		if epoch % 1 == 0:
-#			inf_start_time = time.time()
-#			test_mean_perf, test_mean_len = eval_agent(
-#				agent,
-#				device,
-#				test_tasks,
-#				eval_eps=args.eval_eps,
-#				env_kwargs=env_kwargs
-#			)
-#			train_mean_perf, train_mean_len = eval_agent(
-#				agent,
-#				device,
-#				train_tasks,
-#				eval_eps=args.eval_eps,
-#				env_kwargs=env_kwargs
-#			)
-#			inf_end_time = time.time()
+	#		# evaluate the agent on illustrative environment
+	#		if epoch % 1 == 0:
+	#			inf_start_time = time.time()
+	#			test_mean_perf, test_mean_len = eval_agent(
+	#				agent,
+	#				device,
+	#				test_tasks,
+	#				eval_eps=args.eval_eps,
+	#				env_kwargs=env_kwargs
+	#			)
+	#			train_mean_perf, train_mean_len = eval_agent(
+	#				agent,
+	#				device,
+	#				train_tasks,
+	#				eval_eps=args.eval_eps,
+	#				env_kwargs=env_kwargs
+	#			)
+	#			inf_end_time = time.time()
 
-#			print(
-#				f"Epoch: {epoch + 1} | Loss: {epoch_loss / len(dataloader)} | Time: {epoch_end_time - epoch_start_time} \
-#					| Train Returns (mean): {train_mean_perf} | Test Returns (mean): {test_mean_perf}"
-#			)
+	#			print(
+	#				f"Epoch: {epoch + 1} | Loss: {epoch_loss / len(dataloader)} | Time: {epoch_end_time - epoch_start_time} \
+	#					| Train Returns (mean): {train_mean_perf} | Test Returns (mean): {test_mean_perf}"
+	#			)
 
-#			print(epoch+1)
-#			stats_dict.update(
-#				{
-#					"actor_epoch": epoch + 1,
-#					"actor_train_loss": epoch_loss / len(dataloader),
-#					#"epoch_time": epoch_end_time - epoch_start_time,
-#					#"inf_time": inf_end_time - inf_start_time,
-#					"actor_train_rets_mean": train_mean_perf,
-#					"actor_train_len_mean": train_mean_len,
-#					"actor_test_rets_mean": test_mean_perf,
-#					"actor_test_len_mean": test_mean_len
-#				}
-#			)
-#			wandb.log(stats_dict)
+	#			print(epoch+1)
+	#			stats_dict.update(
+	#				{
+	#					"actor_epoch": epoch + 1,
+	#					"actor_train_loss": epoch_loss / len(dataloader),
+	#					#"epoch_time": epoch_end_time - epoch_start_time,
+	#					#"inf_time": inf_end_time - inf_start_time,
+	#					"actor_train_rets_mean": train_mean_perf,
+	#					"actor_train_len_mean": train_mean_len,
+	#					"actor_test_rets_mean": test_mean_perf,
+	#					"actor_test_len_mean": test_mean_len
+	#				}
+	#			)
+	#			wandb.log(stats_dict)
+
+#stats = pstats.Stats(pr)
+#stats.sort_stats(pstats.SortKey.TIME)
+#stats.dump_stats(filename=f"profiling.prof")
 
 
 total_variation = []
+total_variation_q = []
+total_variation_v = []
 obs = []
 env = gym.make('ControlIllustrativeCMDP-v0', tasks=test_tasks, **env_kwargs)
 for _ in range(len(test_tasks)):
@@ -303,13 +317,33 @@ obs = np.array(obs)
 obs = torch.as_tensor(obs, device=device)
 with torch.no_grad():
 	#output = agent.model_base(obs).mean(dim=0)
-	output = agent.actor_dist(agent.model_actor(obs))
-	output = torch.concat([output.mean, output.stddev], dim=-1)
+	output = agent.model_actor(obs)
+	if len(output.shape) == 3:
+		# average over ensemble
+		output = output.mean(dim=0)
+
+	actions = agent.unnormalise(output[:, :2])
+	qs = agent.target_qs(torch.concat([obs, actions], dim=-1)) # [iql_value_ensemble_size, batch_size, 1]
+	if args.iql_avg_q:
+		qs = torch.mean(qs, dim=0) 	# [batch_size, 1]
+	else:
+		qs = torch.min(qs, dim=0)[0]	# [batch_size, 1]
+
+	v = agent.model_v(obs)	# [batch_size, 1]
+
+	
+
 total_variation.append(np.trace(np.cov(output.cpu().numpy(), rowvar=False)))
 total_variation = np.mean(total_variation)
 
+total_variation_q.append(np.var(qs.cpu().numpy()))
+total_variation_q = np.mean(total_variation_q)
 
-wandb.log({"final_total_variation": total_variation, "final_test_ret": test_mean_perf, "final_test_len": test_mean_len, "final_train_ret": train_mean_perf, "final_train_len": train_mean_len}, step=(epoch + 1))
+total_variation_v.append(np.var(v.cpu().numpy()))
+total_variation_v = np.mean(total_variation_v)
+
+
+wandb.log({"final_total_variation_q": total_variation_q, "final_total_variation_v": total_variation_v, "final_total_variation": total_variation, "final_test_ret": test_mean_perf, "final_test_len": test_mean_len, "final_train_ret": train_mean_perf, "final_train_len": train_mean_len}, step=(epoch + 1))
 filewriter.log_final_test_eval({
 		'final_test_ret': test_mean_perf,
 		'final_train_ret': train_mean_perf,

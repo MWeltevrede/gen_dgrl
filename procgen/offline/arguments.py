@@ -57,8 +57,14 @@ parser.add_argument("--bcq_threshold", type=float, default=0.3, help="BCQ thresh
 # IQL
 parser.add_argument("--iql_temperature", type=float, default=0.1, help="IQL temperature for action selection")
 parser.add_argument("--iql_expectile", type=float, default=0.8, help="IQL Expectile Loss")
-parser.add_argument("--iql_ensemble_size", type=int, default=2, help="IQL Q function ensemble size")
+parser.add_argument("--iql_value_ensemble_size", type=int, default=2, help="IQL Q function ensemble size")
+parser.add_argument("--iql_actor_ensemble_size", type=int, default=1, help="IQL policy ensemble size")
 parser.add_argument("--iql_use_value", type=str2bool, default=True, help="Whether to use the value function in policy extraction")
+parser.add_argument("--iql_avg_q", type=str2bool, default=False, help="Whether to use the average or minimum over Q functions in policy extraction")
+parser.add_argument("--iql_critic_da", type=str, default="none", choices=["augment_online", "augment_both", "concistency", "concistency_output", "augment_concistency", "none"], help="How to apply Data Augmentation (DA) to the value functions")
+parser.add_argument("--iql_critic_concistency_coef", type=float, default=10, help="IQL critic data augmentation concistency coefficient")
+parser.add_argument("--iql_actor_da", type=str, default="none", choices=["augment_online", "augment_both", "concistency", "augment_concistency", "concistency_output", "concistency_kl", "concistency_soda", "none"], help="How to apply Data Augmentation (DA) to the policy")
+parser.add_argument("--iql_actor_concistency_coef", type=float, default=10, help="IQL actor data augmentation concistency coefficient")
 
 # DT
 parser.add_argument("--dt_context_length", type=int, default=128, help="context length for the agent")

@@ -383,6 +383,7 @@ class IllustrativeEncoder(NNBase):
 		super().__init__(hidden_size)
 		flattened_dim = np.prod(observation_space.shape)
 		self.normalize_obs = normalize_obs
+		self.use_actor_linear = use_actor_linear
 		if activation == 'relu':
 			activation = nn.ReLU
 		elif activation == 'tanh':
@@ -400,13 +401,22 @@ class IllustrativeEncoder(NNBase):
 		self.linears.append(nn.Linear(channels[-1], hidden_size))
 		self.linears.append(activation())
 		if use_actor_linear:
-			self.linears.append(nn.Linear(hidden_size, action_space))
+			self.last_linear = nn.Linear(hidden_size, action_space)
 		self.linears = nn.Sequential(*self.linears)
+
+	def get_last_latent(self, x):
+		if self.normalize_obs:
+			x = x / 255.
+		out = self.linears(x)
+		return out
 
 	def forward(self, x):
 		if self.normalize_obs:
 			x = x / 255.
-		return self.linears(x)
+		out = self.linears(x)
+		if self.use_actor_linear:
+			out = self.last_linear(out)
+		return out
 	
 class VectorizedLinear(nn.Module):
 	def __init__(self, in_features: int, out_features: int, ensemble_size: int):
@@ -423,9 +433,9 @@ class VectorizedLinear(nn.Module):
 	def reset_parameters(self):
 		# default pytorch init for nn.Linear module
 		for layer in range(self.ensemble_size):
-			nn.init.kaiming_uniform_(self.weight[layer], a=math.sqrt(5))
+			nn.init.kaiming_uniform_(self.weight[layer].transpose(1,0), a=math.sqrt(5))
 
-		fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight[0])
+		fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight[0].transpose(1,0))
 		bound = 1 / math.sqrt(fan_in) if fan_in > 0 else 0
 		nn.init.uniform_(self.bias, -bound, bound)
 
@@ -458,8 +468,23 @@ class IllustrativeEncoderEnsemble(NNBase):
 			self.linears.append(activation())
 		self.linears.append(VectorizedLinear(channels[-1], hidden_size, ensemble_size))
 		self.linears.append(activation())
-		self.linears.append(VectorizedLinear(hidden_size, action_space, ensemble_size))
+		#self.linears.append(VectorizedLinear(hidden_size, action_space, ensemble_size))
 		self.linears = nn.Sequential(*self.linears)
+
+		self.last_linear = VectorizedLinear(hidden_size, action_space, ensemble_size)
+
+	def get_last_latent(self, x):
+		# [batch_size, flattened_dim]
+		x = self.flatten(x)
+		# [ensemble_size, batch_size, flattened_dim]
+		x = x.unsqueeze(0).repeat_interleave(self.ensemble_size, dim=0)
+
+		if self.normalize_obs:
+			x = x / 255.
+
+		# [ensemble_size, batch_size, hidden_size]
+		out = self.linears(x)
+		return out
 
 	def forward(self, x):
 		# [batch_size, flattened_dim]
@@ -472,5 +497,6 @@ class IllustrativeEncoderEnsemble(NNBase):
 
 		# [ensemble_size, batch_size, out_dim]
 		out = self.linears(x)
+		out = self.last_linear(out)
 		
 		return out

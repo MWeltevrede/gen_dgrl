@@ -10,10 +10,13 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import random
+from copy import deepcopy
 
 import wandb
 from online.behavior_policies.distributions import Categorical, Normal
 from utils import AGENT_CLASSES
+from utils.augmentations import rotate as augmentation
 from gym import spaces
 
 
@@ -93,10 +96,10 @@ class IQL:
 			self.continuous_actions = True
 
 		self.model_actor = AGENT_CLASSES[agent_model](
-			observation_space, self.action_space, hidden_size, channels, use_actor_linear=False, normalize_obs=self.normalize_obs, activation=self.activation,
+			observation_space, 2*self.action_space, hidden_size, channels, use_actor_linear=True, normalize_obs=self.normalize_obs, activation=self.activation,
 		)
 		# optimizer_actor uses parameters from model_actor and actor_dist
-		actor_model_params = list(self.model_actor.parameters()) + list(self.actor_dist.parameters())
+		actor_model_params = list(self.model_actor.parameters()) 
 		self.optimizer_actor = torch.optim.Adam(actor_model_params, lr=self.lr)
 
 		self.model_v = AGENT_CLASSES[agent_model](observation_space, 1, hidden_size, channels, normalize_obs=self.normalize_obs, activation=self.activation,)
@@ -143,10 +146,10 @@ class IQL:
 			self.actor_dist = Normal(self.hidden_size, self.action_space)
 
 		self.model_actor = AGENT_CLASSES[self.agent_model](
-			self.observation_space, self.action_space, self.hidden_size, self.channels, use_actor_linear=False, normalize_obs=self.normalize_obs, activation=self.activation,
+			self.observation_space, 2*self.action_space, self.hidden_size, self.channels, use_actor_linear=True, normalize_obs=self.normalize_obs, activation=self.activation,
 		)
 		# optimizer_actor uses parameters from model_actor and actor_dist
-		actor_model_params = list(self.model_actor.parameters()) + list(self.actor_dist.parameters())
+		actor_model_params = list(self.model_actor.parameters())
 		self.optimizer_actor = torch.optim.Adam(actor_model_params, lr=self.lr)
 
 		self.model_actor.to(self.device)
@@ -231,7 +234,7 @@ class IQL:
 		# take minimum of exp_action and 100.0 to avoid overflow
 		exp_action = torch.min(exp_action, torch.tensor(100.0).to(exp_action.device))  # [batch_size, 1]
 		# _, action_log_prob = self.get_action(observations, return_log_probs=True)  # [batch_size, 1]
-		action_feats = self.model_actor(observations)  # [batch_size, 512]
+		action_feats = self.model_actor(observations)  
 		action_dist = self.actor_dist(action_feats)
 		if self.continuous_actions:
 			action_log_prob = action_dist.log_probs(self.normalise(actions))
@@ -274,7 +277,7 @@ class IQL:
 		# take minimum of exp_action and 100.0 to avoid overflow
 		exp_action = torch.min(exp_action, torch.tensor(100.0).to(exp_action.device))  # [batch_size, 1]
 		# _, action_log_prob = self.get_action(observations, return_log_probs=True)  # [batch_size, 1]
-		action_feats = self.model_actor(observations)  # [batch_size, 512]
+		action_feats = self.model_actor(observations)  
 		action_dist = self.actor_dist(action_feats)
 		if self.continuous_actions:
 			action_log_prob = action_dist.log_probs(self.normalise(actions))
@@ -351,7 +354,7 @@ class IQL:
 		"""
 		deterministic = eps == 0.0
 
-		action_feats = self.model_actor(observations)  # [batch_size, 512]
+		action_feats = self.model_actor(observations)  
 		action_dist = self.actor_dist(action_feats)
 
 		if deterministic:
@@ -379,7 +382,7 @@ class IQL:
 		"""
 		save_dict = {
 			"actor_state_dict": self.model_actor.state_dict(),
-			"actor_dist_state_dict": self.actor_dist.state_dict(),
+			#"actor_dist_state_dict": self.actor_dist.state_dict(),
 			"model_v_state_dict": self.model_v.state_dict(),
 			"model_q1_state_dict": self.model_q1.state_dict(),
 			"model_q2_state_dict": self.model_q2.state_dict(),
@@ -403,7 +406,7 @@ class IQL:
 		"""
 		checkpoint = torch.load(path)
 		self.model_actor.load_state_dict(checkpoint["actor_state_dict"])
-		self.actor_dist.load_state_dict(checkpoint["actor_dist_state_dict"])
+		#self.actor_dist.load_state_dict(checkpoint["actor_dist_state_dict"])
 		self.model_v.load_state_dict(checkpoint["model_v_state_dict"])
 		self.model_q1.load_state_dict(checkpoint["model_q1_state_dict"])
 		self.model_q2.load_state_dict(checkpoint["model_q2_state_dict"])
@@ -420,6 +423,7 @@ class IQL:
 		return checkpoint["curr_epochs"]
 	
 
+C4 = [0, 90, 180, 270]
 
 class IQLEnsemble(IQL):
 	def __init__(
@@ -441,8 +445,15 @@ class IQLEnsemble(IQL):
 		perform_polyak_update, 
 		normalize_obs,
 		activation,
-		ensemble_size,
+		value_ensemble_size,
+		actor_ensemble_size,
 		use_value,
+		critic_da,
+		critic_concistency_coef,
+		actor_da,
+		actor_concistency_coef,
+		actor_soda_update_coef = 0.005,
+		avg_q = False,
 	):
 		super().__init__(
 			observation_space=observation_space,
@@ -463,31 +474,53 @@ class IQLEnsemble(IQL):
 			normalize_obs=normalize_obs,
 			activation=activation,
 		)
-		self.ensemble_size = ensemble_size
+		self.value_ensemble_size = value_ensemble_size
+		self.actor_ensemble_size = actor_ensemble_size
 		self.use_value = use_value
+		self.avg_q = avg_q
 		self.agent_model = agent_model
+		self.critic_da = critic_da
+		self.critic_concistency_coef = critic_concistency_coef
+		self.actor_da = actor_da
+		self.actor_concistency_coef = actor_concistency_coef
+		self.actor_soda_update_coef = actor_soda_update_coef
 		del self.model_q1
 		del self.target_q1
 		del self.optimizer_q1
 		del self.model_q2
 		del self.target_q2
 		del self.optimizer_q2
+		del self.model_actor
+		del self.optimizer_actor
+
+		if agent_model == 'illustrative':
+			self.model_actor = AGENT_CLASSES['illustrative_ensemble'](
+				observation_space, 2*self.action_space, hidden_size, channels, use_actor_linear=True, normalize_obs=self.normalize_obs, activation=self.activation, ensemble_size=actor_ensemble_size,
+			)
+			self.optimizer_actor = torch.optim.Adam(self.model_actor.parameters(), lr=self.lr)
+			#self.model_actor2 = [AGENT_CLASSES['illustrative'](
+			#	observation_space, 2*self.action_space, hidden_size, channels, use_actor_linear=True, normalize_obs=self.normalize_obs, activation=self.activation,
+			#) for _ in range(self.actor_ensemble_size)]
+			#self.optimizer_actor2 = [torch.optim.Adam(self.model_actor2[i].parameters(), lr=self.lr) for i in range(self.actor_ensemble_size)]
+		else:
+			#TODO
+			assert False
 
 		self.model_qs = []
 		self.target_qs = []
 		self.optimizer_qs = []
 		if agent_model == 'illustrative':
 			if self.continuous_actions:
-				self.model_qs = AGENT_CLASSES['illustrative_ensemble'](self.action_observation_space, 1, hidden_size, channels, normalize_obs=self.normalize_obs, activation=self.activation, ensemble_size=ensemble_size)
-				self.target_qs = AGENT_CLASSES['illustrative_ensemble'](self.action_observation_space, 1, hidden_size, channels, normalize_obs=self.normalize_obs, activation=self.activation, ensemble_size=ensemble_size)
+				self.model_qs = AGENT_CLASSES['illustrative_ensemble'](self.action_observation_space, 1, hidden_size, channels, normalize_obs=self.normalize_obs, activation=self.activation, ensemble_size=value_ensemble_size)
+				self.target_qs = AGENT_CLASSES['illustrative_ensemble'](self.action_observation_space, 1, hidden_size, channels, normalize_obs=self.normalize_obs, activation=self.activation, ensemble_size=value_ensemble_size)
 			else:
-				self.model_qs = AGENT_CLASSES['illustrative_ensemble'](observation_space, self.action_space, hidden_size, channels, normalize_obs=self.normalize_obs, activation=self.activation, ensemble_size=ensemble_size)
-				self.target_qs = AGENT_CLASSES['illustrative_ensemble'](observation_space, self.action_space, hidden_size, channels, normalize_obs=self.normalize_obs, activation=self.activation, ensemble_size=ensemble_size)
+				self.model_qs = AGENT_CLASSES['illustrative_ensemble'](observation_space, self.action_space, hidden_size, channels, normalize_obs=self.normalize_obs, activation=self.activation, ensemble_size=value_ensemble_size)
+				self.target_qs = AGENT_CLASSES['illustrative_ensemble'](observation_space, self.action_space, hidden_size, channels, normalize_obs=self.normalize_obs, activation=self.activation, ensemble_size=value_ensemble_size)
 			self.optimizer_qs = torch.optim.Adam(self.model_qs.parameters(), lr=self.lr)
 			self.target_qs.load_state_dict(self.model_qs.state_dict())
 			self.target_qs.eval()
 		else:
-			for _ in range(ensemble_size):
+			for _ in range(value_ensemble_size):
 				if self.continuous_actions:
 					model_q = AGENT_CLASSES[agent_model](self.action_observation_space, 1, hidden_size, channels, normalize_obs=self.normalize_obs, activation=self.activation,)
 					target_q = AGENT_CLASSES[agent_model](self.action_observation_space, 1, hidden_size, channels, normalize_obs=self.normalize_obs, activation=self.activation,)
@@ -502,8 +535,34 @@ class IQLEnsemble(IQL):
 				self.target_qs.append(target_q)
 				self.optimizer_qs.append(optimizer_q)
 
+		#if self.actor_da == "concistency_soda":
+		#	self.target_actor = deepcopy(self.model_actor)
+		#	self.target_actor.eval()
+		#	self.soda_projector = nn.Sequential(
+		#		nn.Linear(hidden_size, 100),
+		#		nn.ReLU(),
+		#		nn.Linear(100, 100)
+		#	)
+		#	self.soda_projector_target = nn.Sequential(
+		#		nn.Linear(hidden_size, 100),
+		#		nn.ReLU(),
+		#		nn.Linear(100, 100)
+		#	)
+		#	self.soda_projector_target.load_state_dict(self.soda_projector.state_dict())
+		#	self.soda_projector_target.eval()
+		#	self.soda_predictor = nn.Sequential(
+		#		nn.Linear(100, 100),
+		#		nn.ReLU(),
+		#		nn.Linear(100, 100)
+		#	)
+
+		#	actor_model_params = list(self.model_actor.parameters()) + list(self.actor_dist.parameters()) + list(self.soda_projector.parameters()) + list(self.soda_predictor.parameters())
+		#	self.optimizer_actor = torch.optim.Adam(actor_model_params, lr=self.lr)
+		assert not self.actor_da == "concistency_soda"
+
 	def train(self):
 		self.model_actor.train()
+		#[m.train() for m in self.model_actor]
 		self.actor_dist.train()
 		self.model_v.train()
 		if self.agent_model == 'illustrative':
@@ -514,6 +573,7 @@ class IQLEnsemble(IQL):
 
 	def eval(self):
 		self.model_actor.eval()
+		#[m.eval() for m in self.model_actor]
 		self.actor_dist.eval()
 		self.model_v.eval()
 		if self.agent_model == 'illustrative':
@@ -524,6 +584,7 @@ class IQLEnsemble(IQL):
 
 	def set_device(self, device):
 		self.model_actor.to(device)
+		#[m.to(device) for m in self.model_actor]
 		self.actor_dist.to(device)
 		self.model_v.to(device)
 		if self.agent_model == 'illustrative':
@@ -538,67 +599,165 @@ class IQLEnsemble(IQL):
 		if self.continuous_actions:
 			self.low = self.low.to(device)
 			self.high = self.high.to(device)
+
+		#if self.actor_da == "concistency_soda":
+		#	self.target_actor.to(device)
+		#	self.soda_projector.to(device)
+		#	self.soda_predictor.to(device)
+		#	self.soda_projector_target.to(device)
 			
 	def train_step(self, observations, actions, rewards, next_observations, dones):
 		# 1. Calculate Value Loss
+		if "augment" in self.critic_da:
+			angles = [C4[random.randint(0, 3)] for _ in range(observations.shape[0])]
+			critic_observations = torch.concat([observations, augmentation(observations, angles)], dim=0)
+			critic_actions = torch.concat([actions, actions], dim=0)
+			critic_rewards = torch.concat([rewards, rewards], dim=0)
+			critic_dones = torch.concat([dones, dones], dim=0)
+			if self.critic_da == "augment_both":
+				critic_next_observations = torch.concat([next_observations, augmentation(next_observations, angles)], dim=0)
+			else:
+				critic_next_observations = torch.concat([next_observations, next_observations], dim=0)
+		else:
+			critic_observations = observations
+			critic_actions = actions
+			critic_rewards = rewards
+			critic_dones = dones
+			critic_next_observations = next_observations
+
 		with torch.no_grad():
 			if self.agent_model == 'illustrative':
 				if self.continuous_actions:
-					qs = self.target_qs(torch.concat([observations, actions], dim=-1))	# [ensemble_size, batch_size, 1]
+					qs = self.target_qs(torch.concat([critic_observations, critic_actions], dim=-1))	# [value_ensemble_size, batch_size, 1]
 				else:
-					qs = self.target_qs(observations).gather(1, actions)
+					qs = self.target_qs(critic_observations).gather(1, critic_actions)
 					assert qs.shape[-1] == 1
 			else:
 				qs = []
 				if self.continuous_actions:
 					for t in self.target_qs:
-						qs.append(t(torch.concat([observations, actions], dim=-1)))
+						qs.append(t(torch.concat([critic_observations, critic_actions], dim=-1)))
 				else:
 					for t in self.target_qs:
-						qs.append(t(observations).gather(1, actions))
-				qs = torch.stack(qs, dim=0)		# [ensemble_size, batch_size, 1]
+						qs.append(t(critic_observations).gather(1, critic_actions))
+				qs = torch.stack(qs, dim=0)		# [value_ensemble_size, batch_size, 1]
 
 			#q_minimum = torch.min(qs, dim=0)[0]  # [batch_size, 1]
 			q_minimum = torch.min(qs[0], qs[1])
-			q_avg = torch.mean(qs, dim=0) 	# [batch_size, 1]
+			#q_avg = torch.mean(qs, dim=0) 	# [batch_size, 1]
 
-		curr_value = self.model_v(observations)  # [batch_size, 1]
+		curr_value = self.model_v(critic_observations)  # [batch_size, 1]
 		u_diff = q_minimum - curr_value  # [batch_size, 1]
 		value_loss = self.expectile_loss(u_diff, self.iql_expectile)  # [1]
+
+		value_concistency_loss = 0
+		if self.critic_da == "concistency":
+			angles = [C4[random.randint(0, 3)] for _ in range(critic_observations.shape[0])]
+			latent = self.model_v.get_last_latent(critic_observations)
+			augmented_latent = self.model_v.get_last_latent(augmentation(critic_observations, angles))
+			value_concistency_loss = self.critic_concistency_coef * F.mse_loss(latent, augmented_latent).mean()
+			value_loss += value_concistency_loss
+			value_concistency_loss = value_concistency_loss.item()
+		elif self.critic_da == "concistency_output":
+			angles = [C4[random.randint(0, 3)] for _ in range(critic_observations.shape[0])]
+			latent = self.model_v(critic_observations)
+			augmented_latent = self.model_v(augmentation(critic_observations, angles))
+			value_concistency_loss = self.critic_concistency_coef * F.mse_loss(latent, augmented_latent).mean()
+			value_loss += value_concistency_loss
+			value_concistency_loss = value_concistency_loss.item()
+		elif self.critic_da == "augment_concistency":
+			angles = [C4[random.randint(0, 3)] for _ in range(observations.shape[0])]
+			latent = self.model_v(observations)
+			augmented_latent = self.model_v(augmentation(observations, angles))
+			value_concistency_loss = self.critic_concistency_coef * F.mse_loss(latent, augmented_latent).mean()
+			value_loss += value_concistency_loss
+			value_concistency_loss = value_concistency_loss.item()
+
 		self.optimizer_v.zero_grad(set_to_none=True)
 		value_loss.backward()
 		self.optimizer_v.step()
 
 		# 2. Calculate Critic Loss
 		with torch.no_grad():
-			next_v = self.model_v(next_observations)  # [batch_size, 1]
-		target_q = rewards + (1 - dones) * self.gamma * next_v.detach()  # [batch_size, 1]
+			next_v = self.model_v(critic_next_observations)  # [batch_size, 1]
+		target_q = critic_rewards + (1 - critic_dones) * self.gamma * next_v.detach()  # [batch_size, 1]
 		
 		if self.agent_model == 'illustrative':
 			if self.continuous_actions:
-				curr_q = self.model_qs(torch.concat([observations, actions], dim=-1))
+				curr_q = self.model_qs(torch.concat([critic_observations, critic_actions], dim=-1))
 			else:
-				curr_q = self.model_qs(observations).gather(1, actions) 
+				curr_q = self.model_qs(critic_observations).gather(1, critic_actions) 
 				assert qs.shape[-1] == 1
-			#critic_loss = F.mse_loss(curr_q, target_q.unsqueeze(0).expand(self.ensemble_size, -1, -1)).mean()
+			#critic_loss = F.mse_loss(curr_q, target_q.unsqueeze(0).expand(self.value_ensemble_size, -1, -1)).mean()
 			dims_to_mean_over = list(range(len(curr_q.shape)))[1:]
-			critic_loss = ((curr_q - target_q.unsqueeze(0).expand(self.ensemble_size, -1, -1)) ** 2).mean(dim=dims_to_mean_over).sum(dim=0)	
+			critic_loss = ((curr_q - target_q.unsqueeze(0).expand(self.value_ensemble_size, -1, -1)) ** 2).mean(dim=dims_to_mean_over).sum(dim=0)	
+
+			critic_concistency_loss = 0
+			if self.critic_da == "concistency":
+				angles = [C4[random.randint(0, 3)] for _ in range(critic_observations.shape[0])]
+				latent = self.model_qs.get_last_latent(torch.concat([critic_observations, critic_actions], dim=-1))
+				augmented_latent = self.model_qs.get_last_latent(torch.concat([augmentation(critic_observations, angles), critic_actions], dim=-1))
+				dims_to_mean_over = list(range(len(latent.shape)))[1:]
+				critic_concistency_loss = self.critic_concistency_coef * ((latent - augmented_latent) ** 2).mean(dim=dims_to_mean_over).sum(dim=0)	
+				critic_loss += critic_concistency_loss
+				critic_concistency_loss = critic_concistency_loss.item()
+			elif self.critic_da == "concistency_output":
+				angles = [C4[random.randint(0, 3)] for _ in range(critic_observations.shape[0])]
+				latent = self.model_qs(torch.concat([critic_observations, critic_actions], dim=-1))
+				augmented_latent = self.model_qs(torch.concat([augmentation(critic_observations, angles), critic_actions], dim=-1))
+				dims_to_mean_over = list(range(len(latent.shape)))[1:]
+				critic_concistency_loss = self.critic_concistency_coef * ((latent - augmented_latent) ** 2).mean(dim=dims_to_mean_over).sum(dim=0)	
+				critic_loss += critic_concistency_loss
+				critic_concistency_loss = critic_concistency_loss.item()
+			elif self.critic_da == "augment_concistency":
+				angles = [C4[random.randint(0, 3)] for _ in range(observations.shape[0])]
+				latent = self.model_qs(torch.concat([observations, actions], dim=-1))
+				augmented_latent = self.model_qs(torch.concat([augmentation(observations, angles), actions], dim=-1))
+				dims_to_mean_over = list(range(len(latent.shape)))[1:]
+				critic_concistency_loss = self.critic_concistency_coef * ((latent - augmented_latent) ** 2).mean(dim=dims_to_mean_over).sum(dim=0)	
+				critic_loss += critic_concistency_loss
+				critic_concistency_loss = critic_concistency_loss.item()
+
 			self.optimizer_qs.zero_grad(set_to_none=True)
 			critic_loss.backward()
 			self.optimizer_qs.step()
-			avg_critic_loss = critic_loss.item() / self.ensemble_size
+			avg_critic_loss = critic_loss.item() / self.value_ensemble_size
 		else:
 			avg_critic_loss = 0
 			for i, m in enumerate(self.model_qs):
 				if self.continuous_actions:
-					curr_q = m(torch.concat([observations, actions], dim=-1))  # [batch_size, 1]
+					curr_q = m(torch.concat([critic_observations, critic_actions], dim=-1))  # [batch_size, 1]
 				else:
-					curr_q = m(observations).gather(1, actions)  # [batch_size, 1]
+					curr_q = m(critic_observations).gather(1, critic_actions)  # [batch_size, 1]
 				critic_loss = F.mse_loss(curr_q, target_q).mean()  # [1]
+
+				critic_concistency_loss = 0
+				if self.critic_da == "concistency":
+					angles = [C4[random.randint(0, 3)] for _ in range(critic_observations.shape[0])]
+					latent = m.get_last_latent(torch.concat([critic_observations, critic_actions], dim=-1))
+					augmented_latent = m.get_last_latent(torch.concat([augmentation(critic_observations, angles), critic_actions], dim=-1))
+					critic_concistency_loss = self.critic_concistency_coef * F.mse_loss(latent, augmented_latent).mean()	
+					critic_loss += critic_concistency_loss
+					critic_concistency_loss = critic_concistency_loss.item()
+				elif self.critic_da == "concistency_output":
+					angles = [C4[random.randint(0, 3)] for _ in range(critic_observations.shape[0])]
+					latent = m(torch.concat([critic_observations, critic_actions], dim=-1))
+					augmented_latent = m(torch.concat([augmentation(critic_observations, angles), critic_actions], dim=-1))
+					critic_concistency_loss = self.critic_concistency_coef * F.mse_loss(latent, augmented_latent).mean()	
+					critic_loss += critic_concistency_loss
+					critic_concistency_loss = critic_concistency_loss.item()
+				elif self.critic_da == "augment_concistency":
+					angles = [C4[random.randint(0, 3)] for _ in range(observations.shape[0])]
+					latent = m(torch.concat([observations, actions], dim=-1))
+					augmented_latent = m(torch.concat([augmentation(observations, angles), actions], dim=-1))
+					critic_concistency_loss = self.critic_concistency_coef * F.mse_loss(latent, augmented_latent).mean()	
+					critic_loss += critic_concistency_loss
+					critic_concistency_loss = critic_concistency_loss.item()
+
 				self.optimizer_qs[i].zero_grad(set_to_none=True)
 				critic_loss.backward()
 				self.optimizer_qs[i].step()
-				avg_critic_loss += critic_loss.item() / self.ensemble_size
+				avg_critic_loss += critic_loss.item() / self.value_ensemble_size
 		
 		# Update the target network, copying all weights and biases in DQN
 		if self.agent_model == 'illustrative':
@@ -609,7 +768,7 @@ class IQLEnsemble(IQL):
 				if self.total_steps % self.target_update_freq == 0:
 					self.target_qs.load_state_dict(self.model_qs.state_dict())
 		else:
-			for i in range(self.ensemble_size):
+			for i in range(self.value_ensemble_size):
 				if self.perform_polyak_update:
 					for target_param, param in zip(self.target_qs[i].parameters(), self.model_qs[i].parameters()):
 						target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
@@ -618,36 +777,153 @@ class IQLEnsemble(IQL):
 						self.target_qs[i].load_state_dict(self.model_qs[i].state_dict())
 
 		# 3. Calculate Actor Loss
+		if "augment" in self.actor_da:
+			angles = [C4[random.randint(0, 3)] for _ in range(observations.shape[0])]
+			actor_observations_a = torch.concat([observations, augmentation(observations, angles)], dim=0)
+			actor_actions_a = torch.concat([actions, actions], dim=0)
+			if self.actor_da == 'augment_both':
+				actor_observations_c = actor_observations_a
+				actor_actions_c = actor_actions_a
+			else:
+				actor_observations_c = torch.concat([observations, observations], dim=0)
+				actor_actions_c = actor_actions_a
+		else:
+			actor_observations_a = observations
+			actor_actions_a = actions
+			actor_observations_c = observations
+			actor_actions_c = actions
+		
 		if self.use_value:
+			with torch.no_grad():
+				if self.agent_model == 'illustrative':
+					if self.continuous_actions:
+						qs = self.target_qs(torch.concat([actor_observations_c, actor_actions_c], dim=-1))
+					else:
+						qs = self.target_qs(actor_observations_c).gather(1, actor_actions_c)
+						assert qs.shape[-1] == 1
+				else:
+					qs = []
+					if self.continuous_actions:
+						for t in self.target_qs:
+							qs.append(t(torch.concat([actor_observations_c, actor_actions_c], dim=-1)))
+					else:
+						for t in self.target_qs:
+							qs.append(t(actor_observations_c).gather(1, actor_actions_c))
+					qs = torch.stack(qs, dim=0)		# [value_ensemble_size, batch_size, 1]
+				if self.avg_q:
+					q_avg = torch.mean(qs, dim=0) 	# [batch_size, 1]
+				else:
+					q_avg = torch.min(qs, dim=0)[0]
+				curr_value = self.model_v(actor_observations_c)  # [batch_size, 1]
+
 			actor_u_diff = q_avg - curr_value
 		else:
+			with torch.no_grad():
+				if self.agent_model == 'illustrative':
+					if self.continuous_actions:
+						qs = self.target_qs(torch.concat([actor_observations_c, actor_actions_c], dim=-1))
+					else:
+						qs = self.target_qs(actor_observations_c).gather(1, actor_actions_c)
+						assert qs.shape[-1] == 1
+				else:
+					qs = []
+					if self.continuous_actions:
+						for t in self.target_qs:
+							qs.append(t(torch.concat([actor_observations_c, actor_actions_c], dim=-1)))
+					else:
+						for t in self.target_qs:
+							qs.append(t(actor_observations_c).gather(1, actor_actions_c))
+					qs = torch.stack(qs, dim=0)		# [value_ensemble_size, batch_size, 1]
+				if self.avg_q:
+					q_avg = torch.mean(qs, dim=0) 	# [batch_size, 1]
+				else:
+					q_avg = torch.min(qs, dim=0)[0]
+
 			if self.continuous_actions:
 				actor_u_diff = q_avg
 			else:
 				with torch.no_grad():
 					if self.agent_model == 'illustrative':
-						all_qs = self.target_qs(observations)	# [ensemble_size, batch_size, n_actions]
+						all_qs = self.target_qs(actor_observations_c)	# [value_ensemble_size, batch_size, n_actions]
 						all_q_avg = torch.mean(all_qs, dim=0)
 					else:
 						all_qs = []
 						for t in self.target_qs:
-							all_qs.append(t(observations))	# [ensemble_size, batch_size, n_actions]
+							all_qs.append(t(actor_observations_c))	# [value_ensemble_size, batch_size, n_actions]
 						all_q_avg = torch.mean(torch.stack(all_qs, dim=0), dim=0)
 				actor_u_diff = q_avg - torch.max(all_q_avg, dim=-1, keepdim=True)[0]
 		exp_action = torch.exp(actor_u_diff.detach() * self.iql_temperature)  # [batch_size, 1]
 		# take minimum of exp_action and 100.0 to avoid overflow
 		exp_action = torch.min(exp_action, torch.tensor(100.0).to(exp_action.device))  # [batch_size, 1]
 		# _, action_log_prob = self.get_action(observations, return_log_probs=True)  # [batch_size, 1]
-		action_feats = self.model_actor(observations)  # [batch_size, 512]
-		action_dist = self.actor_dist(action_feats)
+
+
+		action_feats = self.model_actor(actor_observations_a)  # [actor_ensemble_size, batch_size, 2*action_dim] or [actor_ensemble_size, batch_size, n_actions]
+		#action_feats = torch.stack([m(actor_observations_a) for m in self.model_actor], dim=0)
+		action_dist = self.actor_dist(action_feats)	# [actor_ensemble_size, batch_size] number of dists
 		if self.continuous_actions:
-			action_log_prob = action_dist.log_probs(self.normalise(actions))
+			action_log_prob = action_dist.log_probs(self.normalise(actor_actions_a.unsqueeze(0).repeat_interleave(self.actor_ensemble_size, dim=0))) # [actor_ensemble_size, batch_size, action_dim] 
 		else:
-			action_log_prob = action_dist.log_probs(actions)
-		actor_loss = -(exp_action * action_log_prob).mean()  # [1]
+			action_log_prob = action_dist.log_probs(actor_actions_a.unsqueeze(0).repeat_interleave(self.actor_ensemble_size, dim=0)) # [actor_ensemble_size, batch_size, 1]
+		dims_to_mean_over = list(range(len(action_log_prob.shape)))[1:]
+		actor_loss = -((exp_action.broadcast_to(action_log_prob.shape) * action_log_prob).mean(dim=dims_to_mean_over).sum(dim=0))  # [1]
+
+
+		actor_concistency_loss = 0
+		if self.actor_da == "concistency":
+			angles = [C4[random.randint(0, 3)] for _ in range(actor_observations_a.shape[0])]
+			latent = self.model_actor.get_last_latent(actor_observations_a)
+			augmented_latent = self.model_actor.get_last_latent(augmentation(actor_observations_a, angles))
+			dims_to_mean_over = list(range(len(latent.shape)))[1:]
+			actor_concistency_loss = self.actor_concistency_coef * ((latent - augmented_latent) ** 2).mean(dim=dims_to_mean_over).sum(dim=0)
+			actor_loss += actor_concistency_loss
+			actor_concistency_loss = actor_concistency_loss.item()
+		if self.actor_da == "augment_concistency":
+			angles = [C4[random.randint(0, 3)] for _ in range(observations.shape[0])]
+			output = self.model_actor(observations)
+			augmented_output = self.model_actor(augmentation(observations, angles))
+			dims_to_mean_over = list(range(len(output.shape)))[1:]
+			actor_concistency_loss = self.actor_concistency_coef * ((output - augmented_output) ** 2).mean(dim=dims_to_mean_over).sum(dim=0)
+			actor_loss += actor_concistency_loss
+			actor_concistency_loss = actor_concistency_loss.item()
+		elif self.actor_da == "concistency_output":
+			angles = [C4[random.randint(0, 3)] for _ in range(actor_observations_a.shape[0])]
+			output = self.model_actor(actor_observations_a)
+			augmented_output = self.model_actor(augmentation(actor_observations_a, angles))
+			dims_to_mean_over = list(range(len(output.shape)))[1:]
+			actor_concistency_loss = self.actor_concistency_coef * ((output - augmented_output) ** 2).mean(dim=dims_to_mean_over).sum(dim=0)
+			actor_loss += actor_concistency_loss
+			actor_concistency_loss = actor_concistency_loss.item()
+		elif self.actor_da == "concistency_kl":
+			angles = [C4[random.randint(0, 3)] for _ in range(actor_observations_a.shape[0])]
+			output = self.actor_dist(self.model_actor(actor_observations_a))
+			augmented_output = self.actor_dist(self.model_actor(augmentation(actor_observations_a, angles)))
+			actor_concistency_loss = self.actor_concistency_coef * (torch.distributions.kl.kl_divergence(output, augmented_output).sum(dim=(1,2)) / actor_observations_a.shape[0]).sum(dim=0)
+			actor_loss += actor_concistency_loss
+			actor_concistency_loss = actor_concistency_loss.item()
+		#elif self.actor_da == "concistency_soda":
+		#	angles = [C4[random.randint(0, 3)] for _ in range(actor_observations_a.shape[0])]
+		#	with torch.no_grad():
+		#		output = self.soda_projector_target(self.target_actor(actor_observations_a))
+		#	augmented_output = self.soda_predictor(self.soda_projector(self.model_actor(augmentation(actor_observations_a, angles))))
+		#	output = F.normalize(output, dim=-1)
+		#	augmented_output = F.normalize(augmented_output, dim=-1)
+		#	actor_concistency_loss = self.actor_concistency_coef * F.mse_loss(augmented_output, output).mean()	
+		#	actor_loss += actor_concistency_loss
+		#	actor_concistency_loss = actor_concistency_loss.item()
+
 		self.optimizer_actor.zero_grad(set_to_none=True)
+		#[o.zero_grad(set_to_none=True) for o in self.optimizer_actor]
 		actor_loss.backward()
 		self.optimizer_actor.step()
+		#[o.step() for o in self.optimizer_actor]
+
+		#if self.actor_da == "concistency_soda":
+		#	# Update target networks
+		#	for target_param, param in zip(self.target_actor.parameters(), self.model_actor.parameters()):
+		#			target_param.data.copy_(self.actor_soda_update_coef * param.data + (1 - self.actor_soda_update_coef) * target_param.data)
+		#	for target_param, param in zip(self.soda_projector_target.parameters(), self.soda_projector.parameters()):
+		#		target_param.data.copy_(self.actor_soda_update_coef * param.data + (1 - self.actor_soda_update_coef) * target_param.data)
 
 		self.total_steps += 1
 
@@ -657,8 +933,11 @@ class IQLEnsemble(IQL):
 		stats = {
 			"loss": loss.item(),
 			"value_loss": value_loss.item(),
+			"value_concistency_loss": value_concistency_loss,
 			"avg_critic_loss": avg_critic_loss,
+			"critic_concistency_loss": critic_concistency_loss,
 			"actor_loss": actor_loss.item(),
+			"actor_concistency_loss": actor_concistency_loss,
 			"total_steps": self.total_steps,
 		}
 		# print(stats["actor_loss"])
@@ -673,7 +952,7 @@ class IQLEnsemble(IQL):
 	#		else:
 	#			for t in self.target_qs:
 	#				qs.append(t(observations).gather(1, actions))
-	#		qs = torch.stack(qs, dim=0)		# [ensemble_size, batch_size, 1]
+	#		qs = torch.stack(qs, dim=0)		# [ensembvalue_ensemble_sizele_size, batch_size, 1]
 	#		q_avg = torch.mean(qs, dim=0) 	# [batch_size, 1]
 	#		curr_value = self.model_v(observations)  # [batch_size, 1]
 
@@ -686,7 +965,7 @@ class IQLEnsemble(IQL):
 	#			with torch.no_grad():
 	#				all_qs = []
 	#				for t in self.target_qs:
-	#					all_qs.append(t(observations))	# [ensemble_size, batch_size, n_actions]
+	#					all_qs.append(t(observations))	# [value_ensemble_size, batch_size, n_actions]
 	#				all_q_avg = torch.mean(torch.stack(all_qs, dim=0), dim=0)
 	#			actor_u_diff = q_avg - torch.max(all_q_avg, dim=-1, keepdim=True)[0]
 	#	exp_action = torch.exp(actor_u_diff.detach() * self.iql_temperature)  # [batch_size, 1]
@@ -714,6 +993,68 @@ class IQLEnsemble(IQL):
 	#	# print(stats["actor_loss"])
 	#	return stats
 
+	def eval_step(self, observations, eps=0.0, return_log_probs=False):
+		"""
+		Given an observation, return an action.
+
+		:param observation: the observation for the environment
+		:param eps: the epsilon value for epsilon-greedy action selection
+		:return: the action for the environment in numpy
+		"""
+		deterministic = eps == 0.0
+		with torch.no_grad():
+			action_feats = self.model_actor(observations).mean(dim=0)
+			#action_feats = self.model_actor(observations)[0]
+			#action_feats = self.model_actor[0](observations)
+			action_dist = self.actor_dist(action_feats)
+
+			if deterministic:
+				action = action_dist.mode()
+			else:
+				action = action_dist.sample()  # [batch_size, 1]
+
+			action_log_prob = action_dist.log_probs(action)
+
+		if self.continuous_actions:
+			action = self.unnormalise(action)
+
+		if return_log_probs:
+			return action.cpu().numpy(), action_log_prob
+
+		return action.cpu().numpy()
+
+	def get_action(self, observations, eps=0.0, return_log_probs=False):
+		"""
+		Given an observation, return an action.
+
+		:param observation: the observation for the environment
+		:param eps: the epsilon value for epsilon-greedy action selection
+		:return: the action for the environment in numpy
+		"""
+		deterministic = eps == 0.0
+
+		action_feats = self.model_actor(observations).mean(dim=0)  
+		#action_feats = self.model_actor(observations)[0]
+		#action_feats = self.model_actor[0](observations)
+		action_dist = self.actor_dist(action_feats)
+
+		if deterministic:
+			action = action_dist.mode()
+		else:
+			action = action_dist.sample()  # [batch_size, 1]
+
+		action_log_prob = action_dist.log_probs(action)
+		# st()
+		# print(action_log_prob)
+
+		if self.continuous_actions:
+			action = self.unnormalise(action)
+
+		if return_log_probs:
+			return action, action_log_prob
+
+		return action
+
 
 	def save(self, num_epochs, path):
 		"""
@@ -723,7 +1064,7 @@ class IQLEnsemble(IQL):
 		"""
 		save_dict = {
 			"actor_state_dict": self.model_actor.state_dict(),
-			"actor_dist_state_dict": self.actor_dist.state_dict(),
+			#"actor_dist_state_dict": self.actor_dist.state_dict(),
 			"model_v_state_dict": self.model_v.state_dict(),
 			"optimizer_actor_state_dict": self.optimizer_actor.state_dict(),
 			"optimizer_v_state_dict": self.optimizer_v.state_dict(),
@@ -742,6 +1083,11 @@ class IQLEnsemble(IQL):
 			for i, o in enumerate(self.optimizer_qs):
 				save_dict[f"optimizer_q{i}_state_dict"] = o.state_dict()
 
+		#for i, m in enumerate(self.model_actor):
+		#	save_dict[f"actor_{i}_state_dict"] = m.state_dict()
+		#for i, o in enumerate(self.optimizer_actor):
+		#	save_dict[f"optimizer_actor_{i}_state_dict"] = o.state_dict()
+
 		torch.save(save_dict, path)
 		return
 
@@ -753,7 +1099,7 @@ class IQLEnsemble(IQL):
 		"""
 		checkpoint = torch.load(path)
 		self.model_actor.load_state_dict(checkpoint["actor_state_dict"])
-		self.actor_dist.load_state_dict(checkpoint["actor_dist_state_dict"])
+		#self.actor_dist.load_state_dict(checkpoint["actor_dist_state_dict"])
 		self.model_v.load_state_dict(checkpoint["model_v_state_dict"])
 		self.optimizer_actor.load_state_dict(checkpoint["optimizer_actor_state_dict"])
 		self.optimizer_v.load_state_dict(checkpoint["optimizer_v_state_dict"])
@@ -769,5 +1115,10 @@ class IQLEnsemble(IQL):
 				t.load_state_dict(checkpoint[f"target_q{i}_state_dict"])
 			for i, o in enumerate(self.optimizer_qs):
 				o.load_state_dict(checkpoint[f"optimizer_q{i}_state_dict"])
+
+		#for i, m in enumerate(self.model_actor):
+		#	m.load_state_dict(checkpoint[f"actor_{i}_state_dict"])
+		#for i, o in enumerate(self.optimizer_actor):
+		#	o.load_state_dict(checkpoint[f"optimizer_actor_{i}_state_dict"])
 
 		return checkpoint["curr_epochs"]

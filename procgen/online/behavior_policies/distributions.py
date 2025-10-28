@@ -59,12 +59,12 @@ class Categorical(nn.Module):
 	def __init__(self, num_inputs, num_outputs):
 		super(Categorical, self).__init__()
 
-		init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.constant_(x, 0), gain=0.01)
+		#init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.constant_(x, 0), gain=0.01)
 
-		self.linear = init_(nn.Linear(num_inputs, num_outputs))
+		#self.linear = init_(nn.Linear(num_inputs, num_outputs))
 
 	def forward(self, x):
-		x = self.linear(x)
+		#x = self.linear(x)
 		return FixedCategorical(logits=x)
 	
 
@@ -79,12 +79,10 @@ class Normal(nn.Module):
 		#init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.constant_(x, 0), gain=0.01)
 		#self.linear = init_(nn.Linear(num_inputs, 2*num_outputs))
 		
-		self.linear = nn.Linear(num_inputs, 2*num_outputs)
 		self.log_std_min = log_std_min
 		self.log_std_max = log_std_max
 
 	def forward(self, x):
-		x = self.linear(x)
 		mu, log_std = x.chunk(2, dim=-1)
 		log_std = torch.tanh(log_std)
 		log_std = self.log_std_min + 0.5 * (
@@ -92,3 +90,5 @@ class Normal(nn.Module):
 		) * (log_std + 1)
 		std = log_std.exp()
 		return FixedNormal(loc=mu, scale=std)
+	
+

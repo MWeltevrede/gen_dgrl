@@ -90,8 +90,14 @@ def _create_agent(args, env, extra_config):
 				   perform_polyak_update=args.perform_polyak_update,
 				   normalize_obs=args.normalize_obs, 
 				   activation=args.activation,
-				   ensemble_size=args.iql_ensemble_size,
-				   use_value=args.iql_use_value)
+				   value_ensemble_size=args.iql_value_ensemble_size,
+				   actor_ensemble_size=args.iql_actor_ensemble_size,
+				   use_value=args.iql_use_value,
+				   critic_da=args.iql_critic_da,
+				   critic_concistency_coef=args.iql_critic_concistency_coef,
+				   actor_da=args.iql_actor_da,
+				   actor_concistency_coef=args.iql_actor_concistency_coef,
+				   avg_q=args.iql_avg_q)
 	elif agent_name in ["dt", "bct"]:
 		return DecisionTransformer(env.observation_space,
 								   env.action_space.n, 
