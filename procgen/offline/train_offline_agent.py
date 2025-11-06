@@ -77,7 +77,7 @@ def log_stats(stats):
 # logging.getLogger().setLevel(logging.INFO)
 
 #if args.env_name == "control_illustrative_eps0.5_symmetric" or args.env_name == "control_illustrative_eps0.5_non_symmetric":
-if "data_symmetry" in args.dataset:
+if "data_symmetry" in args.dataset or "discrete" in args.dataset:
 	set_id = int(args.xpid.split('_')[-1])
 else:
 	set_id = -1
@@ -125,7 +125,12 @@ print("Dataset Loaded!")
 
 ## create Illustrative env
 #env_kwargs = {'n_actions':3, 'simple_r_function':True}
-env_kwargs = {'n_actions':None, 'simple_r_function':True, 'epsilon': 0.02, 'terminal': True}
+#env_kwargs = {'n_actions':None, 'simple_r_function':False, 'epsilon': 0.02, 'terminal': False}
+#env_kwargs = {'n_actions':None, 'simple_r_function':True, 'epsilon': 0.02, 'terminal': True}
+if "discrete" in args.dataset or "value_distil" in args.dataset:
+	env_kwargs = {'n_actions':3, 'simple_r_function':True, 'epsilon': 0.02, 'terminal': True}
+else:
+	env_kwargs = {'n_actions':None, 'simple_r_function':True, 'epsilon': 0.02, 'terminal': True}
 env = gym.make('ControlIllustrativeCMDP-v0', tasks=train_tasks, **env_kwargs)
 
 curr_epochs = 0
@@ -201,6 +206,21 @@ for epoch in range(curr_epochs, args.epochs):
 			eval_eps=args.eval_eps,
 			env_kwargs=env_kwargs
 		)
+
+		if "value_distil" in args.algo and args.policy_extraction == True:
+			actor_one, actor_all, actor_sym, actor_non_sym = agent.eval_actors()
+			test_perf_one, test_len_one = eval_agent(actor_one, device, test_tasks, eval_eps=args.eval_eps, env_kwargs=env_kwargs)
+			train_perf_one, train_len_one = eval_agent(actor_one, device, train_tasks, eval_eps=args.eval_eps, env_kwargs=env_kwargs)
+
+			test_perf_all, test_len_all = eval_agent(actor_all, device, test_tasks, eval_eps=args.eval_eps, env_kwargs=env_kwargs)
+			train_perf_all, train_len_all = eval_agent(actor_all, device, train_tasks, eval_eps=args.eval_eps, env_kwargs=env_kwargs)
+
+			test_perf_sym, test_len_sym = eval_agent(actor_sym, device, test_tasks, eval_eps=args.eval_eps, env_kwargs=env_kwargs)
+			train_perf_sym, train_len_sym = eval_agent(actor_sym, device, train_tasks, eval_eps=args.eval_eps, env_kwargs=env_kwargs)
+
+			test_perf_non_sym, test_len_non_sym = eval_agent(actor_non_sym, device, test_tasks, eval_eps=args.eval_eps, env_kwargs=env_kwargs)
+			train_perf_non_sym, train_len_non_sym = eval_agent(actor_non_sym, device, train_tasks, eval_eps=args.eval_eps, env_kwargs=env_kwargs)
+
 		inf_end_time = time.time()
 
 		print(
@@ -222,6 +242,30 @@ for epoch in range(curr_epochs, args.epochs):
 					"test_len_mean": test_mean_len
 				}
 			)
+			if "value_distil" in args.algo and args.policy_extraction == True:
+				stats_dict.update(
+					{
+						"policy_extraction/train_rets_mean_one": train_perf_one,
+						"policy_extraction/train_len_mean_one": train_len_one,
+						"policy_extraction/test_rets_mean_one": test_perf_one,
+						"policy_extraction/test_len_mean_one": test_len_one,
+
+						"policy_extraction/train_rets_mean_all": train_perf_all,
+						"policy_extraction/train_len_mean_all": train_len_all,
+						"policy_extraction/test_rets_mean_all": test_perf_all,
+						"policy_extraction/test_len_mean_all": test_len_all,
+
+						"policy_extraction/train_rets_mean_sym": train_perf_sym,
+						"policy_extraction/train_len_mean_sym": train_len_sym,
+						"policy_extraction/test_rets_mean_sym": test_perf_sym,
+						"policy_extraction/test_len_mean_sym": test_len_sym,
+
+						"policy_extraction/train_rets_mean_non_sym": train_perf_non_sym,
+						"policy_extraction/train_len_mean_non_sym": train_len_non_sym,
+						"policy_extraction/test_rets_mean_non_sym": test_perf_non_sym,
+						"policy_extraction/test_len_mean_non_sym": test_len_non_sym,
+					}
+				)
 			log_stats(stats_dict)
 
 	# Save agent and number of epochs
@@ -305,49 +349,122 @@ train_mean_perf, train_mean_len = eval_agent(agent, device, train_tasks, eval_ep
 #stats.sort_stats(pstats.SortKey.TIME)
 #stats.dump_stats(filename=f"profiling.prof")
 
+if "iql" in args.algo:
+	total_variation = []
+	total_variation_q = []
+	total_variation_v = []
+	obs = []
+	env = gym.make('ControlIllustrativeCMDP-v0', tasks=test_tasks, **env_kwargs)
+	for _ in range(len(test_tasks)):
+		obs.append(env.reset())
+	obs = np.array(obs)
+	obs = torch.as_tensor(obs, device=device)
+	with torch.no_grad():
+		#output = agent.model_base(obs).mean(dim=0)
+		output = agent.model_actor(obs)
+		if len(output.shape) == 3:
+			# average over ensemble
+			output = output.mean(dim=0)
 
-total_variation = []
-total_variation_q = []
-total_variation_v = []
-obs = []
-env = gym.make('ControlIllustrativeCMDP-v0', tasks=test_tasks, **env_kwargs)
-for _ in range(len(test_tasks)):
-	obs.append(env.reset())
-obs = np.array(obs)
-obs = torch.as_tensor(obs, device=device)
-with torch.no_grad():
-	#output = agent.model_base(obs).mean(dim=0)
-	output = agent.model_actor(obs)
-	if len(output.shape) == 3:
-		# average over ensemble
-		output = output.mean(dim=0)
+		if env_kwargs["n_actions"] == None:
+			actions = agent.unnormalise(output[:, :2])
+			qs = agent.target_qs(torch.concat([obs, actions], dim=-1)) # [iql_value_ensemble_size, batch_size, 1]
+		else:
+			qs = agent.target_qs(obs)
+		if args.iql_avg_q:
+			qs = torch.mean(qs, dim=0) 	# [batch_size, 1]
+		else:
+			qs = torch.min(qs, dim=0)[0]	# [batch_size, 1]
 
-	actions = agent.unnormalise(output[:, :2])
-	qs = agent.target_qs(torch.concat([obs, actions], dim=-1)) # [iql_value_ensemble_size, batch_size, 1]
-	if args.iql_avg_q:
-		qs = torch.mean(qs, dim=0) 	# [batch_size, 1]
+		v = agent.model_v(obs)	# [batch_size, 1]
+
+		
+
+	total_variation.append(np.trace(np.cov(output.cpu().numpy(), rowvar=False)))
+	total_variation = np.mean(total_variation)
+
+	if env_kwargs["n_actions"] == None:
+		total_variation_q.append(np.var(qs.cpu().numpy()))
 	else:
-		qs = torch.min(qs, dim=0)[0]	# [batch_size, 1]
+		total_variation_q.append(np.trace(np.cov(qs.cpu().numpy(), rowvar=False)))
+	total_variation_q = np.mean(total_variation_q)
 
-	v = agent.model_v(obs)	# [batch_size, 1]
+	total_variation_v.append(np.var(v.cpu().numpy()))
+	total_variation_v = np.mean(total_variation_v)
 
+
+	wandb.log({"final_total_variation_q": total_variation_q, "final_total_variation_v": total_variation_v, "final_total_variation": total_variation, "final_test_ret": test_mean_perf, "final_test_len": test_mean_len, "final_train_ret": train_mean_perf, "final_train_len": train_mean_len}, step=(epoch + 1))
+
+	filewriter.log_final_test_eval({
+			'final_test_ret': test_mean_perf,
+			'final_train_ret': train_mean_perf,
+			'final_total_variation': total_variation
+		})
+elif "value_distil" in args.algo:
+	total_variation = []
+	if agent.policy_extraction:
+		total_variation_one_action = []
+		total_variation_all_actions = []
+		total_variation_sym_actions = []
+		total_variation_non_sym_actions = []
+	obs = []
+	env = gym.make('ControlIllustrativeCMDP-v0', tasks=test_tasks, **env_kwargs)
+	for _ in range(len(test_tasks)):
+		obs.append(env.reset())
+	obs = np.array(obs)
+	obs = torch.as_tensor(obs, device=device)
+	with torch.no_grad():
+		output = agent.model_base(obs).mean(dim=0)
+		if agent.policy_extraction:
+			out_one = agent.actor_one_action(obs).mean(dim=0)
+			out_all = agent.actor_all_actions(obs).mean(dim=0)
+			out_sym = agent.actor_sym_actions(obs).mean(dim=0)
+			out_non_sym = agent.actor_non_sym_actions(obs).mean(dim=0)
+			
+
+	total_variation.append(np.trace(np.cov(output.cpu().numpy(), rowvar=False)))
+	total_variation = np.mean(total_variation)
+	if agent.policy_extraction:
+		total_variation_one_action.append(np.trace(np.cov(out_one.cpu().numpy(), rowvar=False)))
+		total_variation_one_action = np.mean(total_variation_one_action)
+		total_variation_all_actions.append(np.trace(np.cov(out_all.cpu().numpy(), rowvar=False)))
+		total_variation_all_actions = np.mean(total_variation_all_actions)
+		total_variation_sym_actions.append(np.trace(np.cov(out_sym.cpu().numpy(), rowvar=False)))
+		total_variation_sym_actions = np.mean(total_variation_sym_actions)
+		total_variation_non_sym_actions.append(np.trace(np.cov(out_non_sym.cpu().numpy(), rowvar=False)))
+		total_variation_non_sym_actions = np.mean(total_variation_non_sym_actions)
+		wandb.log({"policy_extraction/final_total_variation_non_sym_actions": total_variation_non_sym_actions, "policy_extraction/final_total_variation_sym_actions": total_variation_sym_actions, "policy_extraction/final_total_variation_all_actions": total_variation_all_actions, "policy_extraction/final_total_variation_one_action": total_variation_one_action, "final_total_variation": total_variation, "final_test_ret": test_mean_perf, "final_test_len": test_mean_len, "final_train_ret": train_mean_perf, "final_train_len": train_mean_len}, step=(epoch + 1))
+
+	else:
+		wandb.log({"final_total_variation": total_variation, "final_test_ret": test_mean_perf, "final_test_len": test_mean_len, "final_train_ret": train_mean_perf, "final_train_len": train_mean_len}, step=(epoch + 1))
+
+	filewriter.log_final_test_eval({
+			'final_test_ret': test_mean_perf,
+			'final_train_ret': train_mean_perf,
+			'final_total_variation': total_variation
+		})
+elif "cql" in args.algo:
+	total_variation = []
+	obs = []
+	env = gym.make('ControlIllustrativeCMDP-v0', tasks=test_tasks, **env_kwargs)
+	for _ in range(len(test_tasks)):
+		obs.append(env.reset())
+	obs = np.array(obs)
+	obs = torch.as_tensor(obs, device=device)
+	with torch.no_grad():
+		output = agent.model(obs)
+
+	total_variation.append(np.trace(np.cov(output.cpu().numpy(), rowvar=False)))
+	total_variation = np.mean(total_variation)
+
+	wandb.log({"final_total_variation": total_variation, "final_test_ret": test_mean_perf, "final_test_len": test_mean_len, "final_train_ret": train_mean_perf, "final_train_len": train_mean_len}, step=(epoch + 1))
+
+	filewriter.log_final_test_eval({
+			'final_test_ret': test_mean_perf,
+			'final_train_ret': train_mean_perf,
+			'final_total_variation': total_variation
+		})
 	
 
-total_variation.append(np.trace(np.cov(output.cpu().numpy(), rowvar=False)))
-total_variation = np.mean(total_variation)
-
-total_variation_q.append(np.var(qs.cpu().numpy()))
-total_variation_q = np.mean(total_variation_q)
-
-total_variation_v.append(np.var(v.cpu().numpy()))
-total_variation_v = np.mean(total_variation_v)
-
-
-wandb.log({"final_total_variation_q": total_variation_q, "final_total_variation_v": total_variation_v, "final_total_variation": total_variation, "final_test_ret": test_mean_perf, "final_test_len": test_mean_len, "final_train_ret": train_mean_perf, "final_train_len": train_mean_len}, step=(epoch + 1))
-filewriter.log_final_test_eval({
-		'final_test_ret': test_mean_perf,
-		'final_train_ret': train_mean_perf,
-		'final_total_variation': total_variation
-	})
 #if args.resume:
 agent.save(num_epochs=args.epochs, path=os.path.join(args.save_path, args.env_name, args.xpid, "final_model.pt"))

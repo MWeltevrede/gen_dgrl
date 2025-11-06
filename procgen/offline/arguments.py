@@ -61,6 +61,7 @@ parser.add_argument("--iql_value_ensemble_size", type=int, default=2, help="IQL 
 parser.add_argument("--iql_actor_ensemble_size", type=int, default=1, help="IQL policy ensemble size")
 parser.add_argument("--iql_use_value", type=str2bool, default=True, help="Whether to use the value function in policy extraction")
 parser.add_argument("--iql_avg_q", type=str2bool, default=False, help="Whether to use the average or minimum over Q functions in policy extraction")
+parser.add_argument("--iql_extract_all_actions", type=str2bool, default=False, help="For discrete action space, whether to clone all actions or not")
 parser.add_argument("--iql_critic_da", type=str, default="none", choices=["augment_online", "augment_both", "concistency", "concistency_output", "augment_concistency", "none"], help="How to apply Data Augmentation (DA) to the value functions")
 parser.add_argument("--iql_critic_concistency_coef", type=float, default=10, help="IQL critic data augmentation concistency coefficient")
 parser.add_argument("--iql_actor_da", type=str, default="none", choices=["augment_online", "augment_both", "concistency", "augment_concistency", "concistency_output", "concistency_kl", "concistency_soda", "none"], help="How to apply Data Augmentation (DA) to the policy")
@@ -82,3 +83,7 @@ parser.add_argument("--threshold_metric", type=str, default="median", choices=["
 # BC-N
 parser.add_argument("--ensemble_size", type=int, default=1, help="size of the ensemble")
 parser.add_argument("--cycle_priors", type=str2bool, default=True, help="whether to subtract the networks own prior or the prior of the next network in the ensemble")
+
+# Value Distillation
+parser.add_argument("--policy_extraction", type=str2bool, default=False, help="Whether to also extract a policy during value distillation")
+parser.add_argument("--policy_extraction_temp", type=float, default=3, help="Temperature used for policy extraction")

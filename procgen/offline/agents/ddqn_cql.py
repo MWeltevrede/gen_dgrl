@@ -19,6 +19,7 @@ class CQL:
 				 lr, 
 				 agent_model, 
 				 hidden_size,
+				 channels,
 				 gamma, 
 				 target_update_freq, 
 				 tau,
@@ -54,9 +55,10 @@ class CQL:
 		self.tau = tau
 		self.normalize_obs = normalize_obs
 		self.activation = activation
+		self.channels = channels
 		
-		self.model = AGENT_CLASSES[agent_model](observation_space, action_space, hidden_size, normalize_obs=self.normalize_obs, activation=self.activation,)
-		self.target_model = AGENT_CLASSES[agent_model](observation_space, action_space, hidden_size, normalize_obs=self.normalize_obs, activation=self.activation,)
+		self.model = AGENT_CLASSES[agent_model](observation_space, action_space, hidden_size, normalize_obs=self.normalize_obs, activation=self.activation, channels=channels, use_actor_linear=True)
+		self.target_model = AGENT_CLASSES[agent_model](observation_space, action_space, hidden_size, normalize_obs=self.normalize_obs, activation=self.activation, channels=channels, use_actor_linear=True)
 		
 		self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
 		

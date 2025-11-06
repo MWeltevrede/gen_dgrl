@@ -20,7 +20,7 @@ def _create_agent(args, env, extra_config):
 	if agent_name == "bc_n_cont":
 		return BehavioralCloningEnsembleContinuous(env.observation_space, env.action_space, args.lr, args.agent_model, ensemble_size=args.ensemble_size, hidden_size=args.hidden_size, channels=args.channels, normalize_obs=args.normalize_obs, activation=args.activation)
 	if agent_name == "value_distil":
-		return ValueDistilEnsemble(env.observation_space, env.action_space, args.lr, args.agent_model, ensemble_size=args.ensemble_size, hidden_size=args.hidden_size, channels=args.channels, normalize_obs=args.normalize_obs, activation=args.activation)
+		return ValueDistilEnsemble(env.observation_space, env.action_space, args.lr, args.agent_model, ensemble_size=args.ensemble_size, hidden_size=args.hidden_size, channels=args.channels, normalize_obs=args.normalize_obs, activation=args.activation, policy_extraction=args.policy_extraction, policy_extraction_temp=args.policy_extraction_temp)
 	if agent_name == "bc_n":
 		return BehavioralCloningEnsemble(env.observation_space, env.action_space.n, args.lr, args.agent_model, ensemble_size=args.ensemble_size, hidden_size=args.hidden_size, channels=args.channels, normalize_obs=args.normalize_obs, activation=args.activation)
 	if agent_name == "bcq":
@@ -44,6 +44,7 @@ def _create_agent(args, env, extra_config):
 				   args.lr, 
 				   args.agent_model, 
 				   args.hidden_size,
+				   channels=args.channels,
 				   gamma=args.gamma,
 				   target_update_freq=args.target_update_freq,
 				   tau=args.tau,
@@ -97,7 +98,8 @@ def _create_agent(args, env, extra_config):
 				   critic_concistency_coef=args.iql_critic_concistency_coef,
 				   actor_da=args.iql_actor_da,
 				   actor_concistency_coef=args.iql_actor_concistency_coef,
-				   avg_q=args.iql_avg_q)
+				   avg_q=args.iql_avg_q,
+				   extract_all_actions=args.iql_extract_all_actions)
 	elif agent_name in ["dt", "bct"]:
 		return DecisionTransformer(env.observation_space,
 								   env.action_space.n, 
