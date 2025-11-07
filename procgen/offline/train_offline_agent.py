@@ -77,7 +77,7 @@ def log_stats(stats):
 # logging.getLogger().setLevel(logging.INFO)
 
 #if args.env_name == "control_illustrative_eps0.5_symmetric" or args.env_name == "control_illustrative_eps0.5_non_symmetric":
-if "data_symmetry" in args.dataset or "discrete" in args.dataset:
+if "data_symmetry" in args.dataset or "discrete" in args.dataset or "test" in args.dataset:
 	set_id = int(args.xpid.split('_')[-1])
 else:
 	set_id = -1
