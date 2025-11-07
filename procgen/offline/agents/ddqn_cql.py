@@ -29,7 +29,8 @@ class CQL:
 				 cql_alpha,
      			 perform_polyak_update, 
 				 normalize_obs, 
-				 activation):
+				 activation,
+				 ensemble_size = 1):
 		"""
 		Initialize the agent.
 
@@ -56,9 +57,18 @@ class CQL:
 		self.normalize_obs = normalize_obs
 		self.activation = activation
 		self.channels = channels
+		self.ensemble_size = ensemble_size
 		
-		self.model = AGENT_CLASSES[agent_model](observation_space, action_space, hidden_size, normalize_obs=self.normalize_obs, activation=self.activation, channels=channels, use_actor_linear=True)
-		self.target_model = AGENT_CLASSES[agent_model](observation_space, action_space, hidden_size, normalize_obs=self.normalize_obs, activation=self.activation, channels=channels, use_actor_linear=True)
+		if agent_model == 'illustrative':
+			self.model = AGENT_CLASSES['illustrative_ensemble'](
+				observation_space, action_space, hidden_size, normalize_obs=self.normalize_obs, activation=self.activation, channels=channels, use_actor_linear=True, ensemble_size=ensemble_size,
+				)
+			self.target_model = AGENT_CLASSES['illustrative_ensemble'](
+				observation_space, action_space, hidden_size, normalize_obs=self.normalize_obs, activation=self.activation, channels=channels, use_actor_linear=True, ensemble_size=ensemble_size,
+				)
+		else:
+			#TODO
+			assert False
 		
 		self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
 		
@@ -85,25 +95,25 @@ class CQL:
 		
 	def train_step(self, observations, actions, rewards, next_observations, dones):
 		# Q-values for current observations
-		q_values = self.model(observations) # [batch_size, num_actions]
+		q_values = self.model(observations) 	# [ensemble_size, batch_size, num_actions]
 		with torch.no_grad():
 			# Q-values for best actions in next observations
-			next_q_values = self.target_model(next_observations)
-			next_actions = torch.argmax(self.model(next_observations), dim=1).unsqueeze(1) # [batch_size, 1]
-			next_q_value = next_q_values.gather(1, next_actions) # [batch_size, 1]
+			next_q_values = self.target_model(next_observations)	# [ensemble_size, batch_size, num_actions]
+			next_actions = torch.argmax(self.model(next_observations), dim=-1).unsqueeze(-1) # [ensemble_size, batch_size, 1]
+			next_q_value = next_q_values.gather(-1, next_actions) # [ensemble_size, batch_size, 1]
 			# Compute the target of the current Q-values
-			target_q_values = rewards + (1 - dones) * self.gamma * next_q_value
+			target_q_values = rewards.unsqueeze(0) + (1 - dones.unsqueeze(0)) * self.gamma * next_q_value
 		# Compute the predicted q values for the actions taken
-		pred_q_values = q_values.gather(1, actions)
+		pred_q_values = q_values.gather(-1, actions.unsqueeze(0).repeat_interleave(self.ensemble_size, dim=0))
 		
 		# Train the model with Bellman error as targets
-		ddqn_loss = F.smooth_l1_loss(pred_q_values, target_q_values)
+		ddqn_loss = F.smooth_l1_loss(pred_q_values, target_q_values, reduction='none').squeeze(-1).mean(dim=-1).sum()
 		
 		# Calculate CQL loss
-		logsumexp_q_values = torch.logsumexp(q_values, dim=1, keepdim=True) # [batch_size, 1]
-		one_hot_actions = F.one_hot(actions.squeeze(dim=1), self.action_space) # [batch_size, num_actions]
-		q_values_selected = torch.sum(q_values * one_hot_actions, dim=1, keepdim=True) # [batch_size, 1]
-		cql_loss = self.cql_alpha * torch.mean(logsumexp_q_values - q_values_selected)
+		logsumexp_q_values = torch.logsumexp(q_values, dim=-1, keepdim=False) # [ensemble_size, batch_size]
+		one_hot_actions = F.one_hot(actions.squeeze(dim=-1), self.action_space) # [batch_size, num_actions]
+		q_values_selected = torch.sum(q_values * one_hot_actions.unsqueeze(0).repeat_interleave(self.ensemble_size, dim=0), dim=-1, keepdim=False) # [ensemble_size, batch_size]
+		cql_loss = self.cql_alpha * torch.mean(logsumexp_q_values - q_values_selected, dim=-1).sum()
 		
 		loss = ddqn_loss + cql_loss
 		self.optimizer.zero_grad()
@@ -160,7 +170,7 @@ class CQL:
 			action = np.random.randint(self.action_space, size=(1,))
 		else:
 			with torch.no_grad():
-				q_values = self.model(observations)
+				q_values = self.model(observations).mean(dim=0)
 				action = torch.argmax(q_values, dim=1).detach().cpu().numpy()
 		return action
 	

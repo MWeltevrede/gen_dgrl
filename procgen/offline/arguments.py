@@ -50,6 +50,7 @@ parser.add_argument("--perform_polyak_update", type=str2bool, default=False, hel
 
 # CQL
 parser.add_argument("--cql_alpha", type=float, default=1.0, help="CQL Loss alpha")
+parser.add_argument("--cql_ensemble_size", type=int, default=1, help="Size of the independent Q network ensemble")
 
 # BCQ
 parser.add_argument("--bcq_threshold", type=float, default=0.3, help="BCQ threshold for action selection")

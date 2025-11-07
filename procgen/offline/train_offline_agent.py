@@ -452,7 +452,7 @@ elif "cql" in args.algo:
 	obs = np.array(obs)
 	obs = torch.as_tensor(obs, device=device)
 	with torch.no_grad():
-		output = agent.model(obs)
+		output = agent.model(obs).mean(dim=0)
 
 	total_variation.append(np.trace(np.cov(output.cpu().numpy(), rowvar=False)))
 	total_variation = np.mean(total_variation)

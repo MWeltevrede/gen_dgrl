@@ -54,7 +54,8 @@ def _create_agent(args, env, extra_config):
 				   cql_alpha=args.cql_alpha,
 				   perform_polyak_update=args.perform_polyak_update,
 				   normalize_obs=args.normalize_obs, 
-				   activation=args.activation)
+				   activation=args.activation,
+				   ensemble_size=args.cql_ensemble_size)
 	elif agent_name == "iql":
 		return IQL(env.observation_space, 
 				   env.action_space, 

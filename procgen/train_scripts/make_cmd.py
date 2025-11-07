@@ -148,7 +148,7 @@ def xpid_from_params(p, prefix="", algo="", is_single=False):
 			if p['perform_polyak_update']:
 				algo_prefix = f"{algo_prefix}-polyak-tau{p['tau']}"
 		if algo == "cql":
-			algo_prefix = f"{algo_prefix}-a{p['cql_alpha']}"
+			algo_prefix = f"{algo_prefix}-a{p['cql_alpha']}-es{p['cql_ensemble_size']}"
 		elif algo == "bcq":
 			assert p["agent_model"] in ["bcq", "bcqresnetbase"]
 			algo_prefix = f"{algo_prefix}-t{p['bcq_threshold']}"
