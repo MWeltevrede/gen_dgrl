@@ -127,7 +127,7 @@ print("Dataset Loaded!")
 #env_kwargs = {'n_actions':3, 'simple_r_function':True}
 #env_kwargs = {'n_actions':None, 'simple_r_function':False, 'epsilon': 0.02, 'terminal': False}
 #env_kwargs = {'n_actions':None, 'simple_r_function':True, 'epsilon': 0.02, 'terminal': True}
-if "discrete" in args.dataset or "value_distil" in args.dataset:
+if "discrete" in args.dataset or "value_distil" in args.dataset or "test" in args.dataset:
 	env_kwargs = {'n_actions':3, 'simple_r_function':True, 'epsilon': 0.02, 'terminal': True}
 else:
 	env_kwargs = {'n_actions':None, 'simple_r_function':True, 'epsilon': 0.02, 'terminal': True}
