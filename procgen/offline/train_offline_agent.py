@@ -11,6 +11,7 @@ import time
 import json
 import csv
 import numpy as np
+import dill
 
 import torch
 import torch.nn as nn
@@ -25,6 +26,7 @@ from offline.test_offline_agent import eval_agent, eval_DT_agent
 from utils.filewriter import FileWriter
 from utils.utils import set_seed
 from utils.early_stopper import EarlyStop
+from utils.augmentations import rotate_c90
 import cProfile, pstats
 
 from gym.envs.registration import register
@@ -444,20 +446,35 @@ elif "value_distil" in args.algo:
 			'final_total_variation': total_variation
 		})
 elif "cql" in args.algo:
+	with open('datasets/analysis_data.pl', 'rb') as file:
+		obs_and_q_values = dill.load(file)
+
 	total_variation = []
-	obs = []
-	env = gym.make('ControlIllustrativeCMDP-v0', tasks=test_tasks, **env_kwargs)
-	for _ in range(len(test_tasks)):
-		obs.append(env.reset())
-	obs = np.array(obs)
-	obs = torch.as_tensor(obs, device=device)
-	with torch.no_grad():
-		output = agent.model(obs).mean(dim=0)
+	value_error = []
+	frac_optimal_actions = []
+	for i, obs in enumerate(obs_and_q_values['observations']):
+		true_q_value = obs_and_q_values['q_values'][i]
+		rotated_obs = rotate_c90(torch.tensor(obs, device=device))
+		with torch.no_grad():
+			output = agent.model(rotated_obs).mean(dim=0)
+		total_variation.append(np.trace(np.cov(output.cpu().numpy(), rowvar=False)))
 
-	total_variation.append(np.trace(np.cov(output.cpu().numpy(), rowvar=False)))
+		true_q_value = torch.tensor(true_q_value, device=device).unsqueeze(0)
+		value_error.append(torch.abs(output - true_q_value).mean().item())
+		
+		true_optimal_actions = set(torch.where(true_q_value == torch.max(true_q_value.squeeze(0), dim=-1)[0])[1].cpu().numpy())
+		highest_action = torch.max(output, dim=-1)[1].cpu().numpy()
+		num_optimal_actions = 0
+		for ha in highest_action:
+			if ha in true_optimal_actions:
+				num_optimal_actions += 1
+		frac_optimal_actions.append(num_optimal_actions / rotated_obs.shape[0])
+	
 	total_variation = np.mean(total_variation)
+	value_error = np.mean(value_error)
+	frac_optimal_actions = np.mean(frac_optimal_actions)
 
-	wandb.log({"final_total_variation": total_variation, "final_test_ret": test_mean_perf, "final_test_len": test_mean_len, "final_train_ret": train_mean_perf, "final_train_len": train_mean_len}, step=(epoch + 1))
+	wandb.log({"final_total_variation": total_variation, "final_avg_value_error": value_error, "final_frac_optimal_actions": frac_optimal_actions, "final_test_ret": test_mean_perf, "final_test_len": test_mean_len, "final_train_ret": train_mean_perf, "final_train_len": train_mean_len}, step=(epoch + 1))
 
 	filewriter.log_final_test_eval({
 			'final_test_ret': test_mean_perf,

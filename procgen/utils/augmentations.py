@@ -13,6 +13,9 @@ C4_MATRICES = [
 	_rotation_matrix(180, th.device('cuda')), 
 	_rotation_matrix(270, th.device('cuda')), 
 ]
+
+C90_MATRICES = [_rotation_matrix(angle, th.device('cuda')) for angle in range(0, 360, 4)]
+
 #C4_MATRICES = [
 #	_rotation_matrix(0, th.device('cpu')), 
 #	_rotation_matrix(90, th.device('cpu')), 
@@ -75,4 +78,25 @@ def rotate(batch, angles):
 
 	return th.concatenate([rotated_vectorized_batch[0], rotated_vectorized_batch[1], rotated_vectorized_batch[2], rotated_vectorized_batch[3], rotated_vectorized_batch[4]], dim=-1)
 	#return th.concatenate([rotated_shoulder_loc, rotated_elbow_loc, rotated_hand_loc, rotated_vel_elbow, rotated_vel_hand], dim=-1)
+
+
+
+def rotate_c90(obs):
+	shoulder_loc = obs[:2]		# [batch_size, 2]
+	elbow_loc = obs[2:4]
+	hand_loc = obs[4:6]
+	vel_elbow = obs[6:8]
+	vel_hand = obs[8:]
+
+	# rotate state by angle
+	vectorized_batch = th.stack([shoulder_loc, elbow_loc, hand_loc, vel_elbow, vel_hand], dim=0).unsqueeze(1)	# [5, 1, 2]
+	vectorized_batch = th.repeat_interleave(vectorized_batch, 90, dim=1)	# [5, 90, 2]
+	rotated_vectorized_batch = th.empty_like(vectorized_batch)
+	for i, rot_mat in enumerate(C90_MATRICES):
+		inds_with_angle = [i]
+		rotation_matrix = rot_mat.T.unsqueeze(0).expand(5, -1, -1)		# [5, 2, 2]
+		rotated_vectorized_batch[:, inds_with_angle] = th.bmm(vectorized_batch[:, inds_with_angle], rotation_matrix)		# [5, inds_with_angle_size, 2]
+
+
+	return th.concatenate([rotated_vectorized_batch[0], rotated_vectorized_batch[1], rotated_vectorized_batch[2], rotated_vectorized_batch[3], rotated_vectorized_batch[4]], dim=-1)
 
