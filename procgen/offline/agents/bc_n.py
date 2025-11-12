@@ -246,7 +246,7 @@ class BehavioralCloningEnsembleContinuous:
 	
 
 class ValueDistilEnsemble:
-	def __init__(self, observation_space, action_space, lr, agent_model, hidden_size=64, ensemble_size=1, policy_extraction=False, policy_extraction_temp=3, **kwargs):
+	def __init__(self, observation_space, action_space, lr, agent_model, hidden_size=64, ensemble_size=1, policy_extraction=False, policy_extraction_temp=3, policy_extraction_pessimism_coef=1, **kwargs):
 		"""
 		Initialize the agent.
 
@@ -262,6 +262,7 @@ class ValueDistilEnsemble:
 		self.ensemble_size = ensemble_size
 		self.policy_extraction = policy_extraction
 		self.policy_extraction_temp = policy_extraction_temp
+		self.policy_extraction_pessimism_coef = policy_extraction_pessimism_coef
 
 		self.model_base = AGENT_CLASSES[agent_model](observation_space, action_space.n, hidden_size, use_actor_linear=True, ensemble_size=ensemble_size, **kwargs)
 		self.optimizer = torch.optim.Adam(self.model_base.parameters(), lr=self.lr)
@@ -393,6 +394,12 @@ class ValueDistilEnsemble:
 
 
 		if self.policy_extraction:
+			# policy pessimism will push down on the logits for all actions
+			all_actions = torch.arange(self.action_space.n)
+			repeated_actions_pessimsim = torch.repeat_interleave(all_actions, observations.shape[0]).to(observations.device).unsqueeze(-1)
+			repeated_observations_pessimism = observations.repeat(all_actions.shape[0], 1)
+
+
 			# Weighted BC loss for only optimal action
 			optimal_action = torch.argmax(values, dim=-1).unsqueeze(-1) 	# [batch_size, 1]
 			u_diff = values.gather(1, optimal_action) - torch.max(values, dim=-1)[0].unsqueeze(-1)
@@ -402,6 +409,9 @@ class ValueDistilEnsemble:
 			action_dist = self.actor_dist(self.actor_one_action(observations).mean(dim=0))
 			action_log_prob = action_dist.log_probs(optimal_action)
 			actor_loss_one = -(exp_action * action_log_prob).mean()
+			action_dist = self.actor_dist(self.actor_one_action(repeated_observations_pessimism).mean(dim=0))
+			action_log_prob = action_dist.log_probs(repeated_actions_pessimsim)
+			actor_loss_one += self.policy_extraction_pessimism_coef * action_log_prob.mean()
 			self.optimizer_one_action.zero_grad(set_to_none=True)
 			actor_loss_one.backward()
 			self.optimizer_one_action.step()
@@ -418,6 +428,9 @@ class ValueDistilEnsemble:
 			action_dist = self.actor_dist(self.actor_all_actions(repeated_observations).mean(dim=0))
 			action_log_prob = action_dist.log_probs(repeated_actions)
 			actor_loss_all = -(exp_action * action_log_prob).mean()
+			action_dist = self.actor_dist(self.actor_all_actions(repeated_observations_pessimism).mean(dim=0))
+			action_log_prob = action_dist.log_probs(repeated_actions_pessimsim)
+			actor_loss_all += self.policy_extraction_pessimism_coef * action_log_prob.mean()
 			self.optimizer_all_actions.zero_grad(set_to_none=True)
 			actor_loss_all.backward()
 			self.optimizer_all_actions.step()
@@ -437,6 +450,9 @@ class ValueDistilEnsemble:
 			action_dist = self.actor_dist(self.actor_sym_actions(repeated_observations).mean(dim=0))
 			action_log_prob = action_dist.log_probs(repeated_actions)
 			actor_loss_sym = -(exp_action * action_log_prob).mean()
+			action_dist = self.actor_dist(self.actor_sym_actions(repeated_observations_pessimism).mean(dim=0))
+			action_log_prob = action_dist.log_probs(repeated_actions_pessimsim)
+			actor_loss_sym += self.policy_extraction_pessimism_coef * action_log_prob.mean()
 			self.optimizer_sym_actions.zero_grad(set_to_none=True)
 			actor_loss_sym.backward()
 			self.optimizer_sym_actions.step()
@@ -493,6 +509,9 @@ class ValueDistilEnsemble:
 			action_dist = self.actor_dist(self.actor_non_sym_actions(repeated_observations).mean(dim=0))
 			action_log_prob = action_dist.log_probs(repeated_actions)
 			actor_loss_non_sym = -(exp_action * action_log_prob).mean()
+			action_dist = self.actor_dist(self.actor_non_sym_actions(repeated_observations_pessimism).mean(dim=0))
+			action_log_prob = action_dist.log_probs(repeated_actions_pessimsim)
+			actor_loss_non_sym += self.policy_extraction_pessimism_coef * action_log_prob.mean()
 			self.optimizer_non_sym_actions.zero_grad(set_to_none=True)
 			actor_loss_non_sym.backward()
 			self.optimizer_non_sym_actions.step()
