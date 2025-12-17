@@ -57,7 +57,7 @@ parser.add_argument("--bcq_threshold", type=float, default=0.3, help="BCQ thresh
 
 # IQL
 parser.add_argument("--iql_temperature", type=float, default=0.1, help="IQL temperature for action selection")
-parser.add_argument("--iql_pessimism_coef", type=float, default=1, help="Coefficient of pessimistic auxiliarry loss in policy extraction")
+#parser.add_argument("--iql_pessimism_coef", type=float, default=1, help="Coefficient of pessimistic auxiliarry loss in policy extraction")
 parser.add_argument("--iql_expectile", type=float, default=0.8, help="IQL Expectile Loss")
 parser.add_argument("--iql_value_ensemble_size", type=int, default=2, help="IQL Q function ensemble size")
 parser.add_argument("--iql_actor_ensemble_size", type=int, default=1, help="IQL policy ensemble size")

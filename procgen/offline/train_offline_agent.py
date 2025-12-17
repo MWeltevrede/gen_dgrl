@@ -79,7 +79,7 @@ def log_stats(stats):
 # logging.getLogger().setLevel(logging.INFO)
 
 #if args.env_name == "control_illustrative_eps0.5_symmetric" or args.env_name == "control_illustrative_eps0.5_non_symmetric":
-if "data_symmetry" in args.dataset or "discrete" in args.dataset or "test" in args.dataset:
+if "data_symmetry" in args.dataset or "discrete" in args.dataset or "test" in args.dataset or "offline_da" in args.dataset:
 	set_id = int(args.xpid.split('_')[-1])
 else:
 	set_id = -1
@@ -129,7 +129,7 @@ print("Dataset Loaded!")
 #env_kwargs = {'n_actions':3, 'simple_r_function':True}
 #env_kwargs = {'n_actions':None, 'simple_r_function':False, 'epsilon': 0.02, 'terminal': False}
 #env_kwargs = {'n_actions':None, 'simple_r_function':True, 'epsilon': 0.02, 'terminal': True}
-if "discrete" in args.dataset or "value_distil" in args.dataset or "test" in args.dataset:
+if "discrete" in args.dataset or "value_distil" in args.dataset or "test" in args.dataset or "offline_da":
 	env_kwargs = {'n_actions':3, 'simple_r_function':True, 'epsilon': 0.02, 'terminal': True}
 else:
 	env_kwargs = {'n_actions':None, 'simple_r_function':True, 'epsilon': 0.02, 'terminal': True}
