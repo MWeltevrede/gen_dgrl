@@ -9,8 +9,12 @@ import torch.nn as nn
 import torch.nn.functional as  F
 import numpy as np
 import math
+import random
 
 from utils import AGENT_CLASSES
+from utils.augmentations import rotate as augmentation
+
+C4 = [0, 90, 180, 270]
 
 class CQL:
 	def __init__(self, 
@@ -30,6 +34,8 @@ class CQL:
      			 perform_polyak_update, 
 				 normalize_obs, 
 				 activation,
+				 da,
+				 da_concistency_coef,
 				 ensemble_size = 1):
 		"""
 		Initialize the agent.
@@ -58,6 +64,8 @@ class CQL:
 		self.activation = activation
 		self.channels = channels
 		self.ensemble_size = ensemble_size
+		self.da = da
+		self.da_concistency_coef = da_concistency_coef
 		
 		if agent_model == 'illustrative':
 			self.model = AGENT_CLASSES['illustrative_ensemble'](
@@ -94,6 +102,17 @@ class CQL:
 		self.target_model.to(device)
 		
 	def train_step(self, observations, actions, rewards, next_observations, dones):
+		if "augment" in self.da:
+			angles = [C4[random.randint(0, 3)] for _ in range(observations.shape[0])]
+			observations = torch.concat([observations, augmentation(observations, angles)], dim=0)
+			actions = torch.concat([actions, actions], dim=0)
+			rewards = torch.concat([rewards, rewards], dim=0)
+			dones = torch.concat([dones, dones], dim=0)
+			if self.da == "augment_both":
+				next_observations = torch.concat([next_observations, augmentation(next_observations, angles)], dim=0)
+			else:
+				next_observations = torch.concat([next_observations, next_observations], dim=0)
+
 		# Q-values for current observations
 		q_values = self.model(observations) 	# [ensemble_size, batch_size, num_actions]
 		with torch.no_grad():
@@ -114,8 +133,24 @@ class CQL:
 		one_hot_actions = F.one_hot(actions.squeeze(dim=-1), self.action_space) # [batch_size, num_actions]
 		q_values_selected = torch.sum(q_values * one_hot_actions.unsqueeze(0).repeat_interleave(self.ensemble_size, dim=0), dim=-1, keepdim=False) # [ensemble_size, batch_size]
 		cql_loss = self.cql_alpha * torch.mean(logsumexp_q_values - q_values_selected, dim=-1).sum()
+
+
+		concistency_loss = torch.tensor(0.0)
+		if self.da == "concistency":
+			angles = [C4[random.randint(0, 3)] for _ in range(observations.shape[0])]
+			latent = self.model.get_last_latent(observations) # [ensemble_size, batch_size, hidden_dim]
+			augmented_latent = self.model.get_last_latent(augmentation(observations, angles))
+			dims_to_mean_over = list(range(len(latent.shape)))[1:]
+			concistency_loss = self.da_concistency_coef * ((latent - augmented_latent) ** 2).mean(dim=dims_to_mean_over).sum(dim=0)	
+		elif self.da == "concistency_output":
+			angles = [C4[random.randint(0, 3)] for _ in range(observations.shape[0])]
+			latent = self.model(observations)  # [ensemble_size, batch_size, num_actions]
+			augmented_latent = self.model(augmentation(observations, angles))
+			dims_to_mean_over = list(range(len(latent.shape)))[1:]
+			concistency_loss = self.da_concistency_coef * ((latent - augmented_latent) ** 2).mean(dim=dims_to_mean_over).sum(dim=0)	
+
 		
-		loss = ddqn_loss + cql_loss
+		loss = ddqn_loss + cql_loss + concistency_loss
 		self.optimizer.zero_grad()
 		loss.backward()
 		self.optimizer.step()
@@ -130,7 +165,7 @@ class CQL:
 		self.total_steps += 1
 		
 		# create stats dict
-		stats = {"loss": loss.item(), "ddqn_loss": ddqn_loss.item(), "cql_loss": cql_loss.item(), "eps": self.calculate_eps, "total_steps": self.total_steps}
+		stats = {"loss": loss.item(), "ddqn_loss": ddqn_loss.item(), "cql_loss": cql_loss.item(), "concistency_loss": concistency_loss.item(), "eps": self.calculate_eps, "total_steps": self.total_steps}
 		return stats
 	
 	def soft_update_target(self, tau):

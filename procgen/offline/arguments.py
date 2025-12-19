@@ -51,6 +51,8 @@ parser.add_argument("--perform_polyak_update", type=str2bool, default=False, hel
 # CQL
 parser.add_argument("--cql_alpha", type=float, default=1.0, help="CQL Loss alpha")
 parser.add_argument("--cql_ensemble_size", type=int, default=1, help="Size of the independent Q network ensemble")
+parser.add_argument("--da", type=str, default="none", choices=["augment_online", "augment_both", "concistency", "concistency_output", "none"], help="How to apply Data Augmentation (DA) to the value function")
+parser.add_argument("--da_concistency_coef", type=float, default=10, help="CQL data augmentation concistency coefficient")
 
 # BCQ
 parser.add_argument("--bcq_threshold", type=float, default=0.3, help="BCQ threshold for action selection")
