@@ -712,7 +712,7 @@ class IQLEnsemble(IQL):
 					augmented_latent = self.model_qs(torch.concat([augmentation(critic_observations, angles), critic_actions], dim=-1))
 				else:
 					latent = self.model_qs(critic_observations)
-					augmented_latent = self.model_qs(augmentation(critic_observations))
+					augmented_latent = self.model_qs(augmentation(critic_observations, angles))
 				dims_to_mean_over = list(range(len(latent.shape)))[1:]
 				critic_concistency_loss = self.critic_concistency_coef * ((latent - augmented_latent) ** 2).mean(dim=dims_to_mean_over).sum(dim=0)	
 				critic_loss += critic_concistency_loss
