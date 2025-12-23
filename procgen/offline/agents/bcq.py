@@ -9,8 +9,12 @@ import torch.nn as nn
 import torch.nn.functional as  F
 import numpy as np
 import math
+import random
 
 from utils import AGENT_CLASSES
+from utils.augmentations import rotate as augmentation
+
+C4 = [0, 90, 180, 270]
 
 class BCQ:
 	def __init__(self, 
@@ -19,6 +23,7 @@ class BCQ:
 				 lr, 
 				 agent_model, 
 				 hidden_size, 
+				 channels,
 				 gamma, 
 				 target_update_freq, 
 				 tau,
@@ -26,6 +31,10 @@ class BCQ:
 				 eps_end, 
 				 eps_decay, 
 				 bcq_threshold,
+				 da,
+				 da_concistency_coef,
+				 normalize_obs,
+				 activation,
 				 perform_polyak_update):
 		"""
 		Initialize the agent.
@@ -47,12 +56,17 @@ class BCQ:
 		self.action_space = action_space
 		self.lr = lr
 		self.hidden_size = hidden_size
+		self.channels = channels
 		self.gamma = gamma
 		self.target_update_freq = target_update_freq
 		self.tau = tau
+		self.normalize_obs = normalize_obs
+		self.activation = activation
+		self.da = da
+		self.da_concistency_coef = da_concistency_coef
 		
-		self.model = AGENT_CLASSES[agent_model](observation_space, action_space, hidden_size)
-		self.target_model = AGENT_CLASSES[agent_model](observation_space, action_space, hidden_size)
+		self.model = AGENT_CLASSES[agent_model](observation_space, action_space, hidden_size, normalize_obs=self.normalize_obs, activation=self.activation, channels=channels)
+		self.target_model = AGENT_CLASSES[agent_model](observation_space, action_space, hidden_size, normalize_obs=self.normalize_obs, activation=self.activation, channels=channels)
 		
 		self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
 		
@@ -78,6 +92,17 @@ class BCQ:
 		self.target_model.to(device)
 		
 	def train_step(self, observations, actions, rewards, next_observations, dones):
+		if "augment" in self.da:
+			angles = [C4[random.randint(0, 3)] for _ in range(observations.shape[0])]
+			observations = torch.concat([observations, augmentation(observations, angles)], dim=0)
+			actions = torch.concat([actions, actions], dim=0)
+			rewards = torch.concat([rewards, rewards], dim=0)
+			dones = torch.concat([dones, dones], dim=0)
+			if self.da == "augment_both":
+				next_observations = torch.concat([next_observations, augmentation(next_observations, angles)], dim=0)
+			else:
+				next_observations = torch.concat([next_observations, next_observations], dim=0)
+
 		with torch.no_grad():
 			# Q-values for best actions in next observations
 			next_q_values_model, next_action_probs, _ = self.model(next_observations) # [batch_size, num_actions]
@@ -101,8 +126,22 @@ class BCQ:
 		# Calculate BCQ loss
 		i_loss = F.nll_loss(curr_action_probs, actions.reshape(-1))
 		bcq_loss = i_loss + 1e-2 * curr_action_i.pow(2).mean()
+
+		concistency_loss = torch.tensor(0.0)
+		if self.da == "concistency":
+			angles = [C4[random.randint(0, 3)] for _ in range(observations.shape[0])]
+			latent = self.model.get_last_latent(observations) # [batch_size, hidden_dim]
+			augmented_latent = self.model.get_last_latent(augmentation(observations, angles))
+			concistency_loss = self.da_concistency_coef * ((latent - augmented_latent) ** 2).mean()
+		elif self.da == "concistency_output":
+			angles = [C4[random.randint(0, 3)] for _ in range(observations.shape[0])]
+			out_q, _, out_i = self.model(observations)  # [batch_size, num_actions]
+			aug_out_q, _, aug_out_i = self.model(augmentation(observations, angles))
+			out = torch.concat([out_q, out_i], dim=-1)
+			aug_out = torch.concat([aug_out_q, aug_out_i], dim=-1)
+			concistency_loss = self.da_concistency_coef * ((out - aug_out) ** 2).mean()
 		
-		loss = ddqn_loss + bcq_loss
+		loss = ddqn_loss + bcq_loss + concistency_loss
 		self.optimizer.zero_grad()
 		loss.backward()
 		self.optimizer.step()
@@ -117,7 +156,7 @@ class BCQ:
 		self.total_steps += 1
 		
 		# create stats dict
-		stats = {"loss": loss.item(), "ddqn_loss": ddqn_loss.item(), "bcq_loss": bcq_loss.item(), "total_steps": self.total_steps}
+		stats = {"loss": loss.item(), "ddqn_loss": ddqn_loss.item(), "bcq_loss": bcq_loss.item(), "concistency_loss": concistency_loss.item(), "total_steps": self.total_steps}
 		return stats
 	
 	def soft_update_target(self, tau):

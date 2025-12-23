@@ -152,10 +152,12 @@ def xpid_from_params(p, prefix="", algo="", is_single=False):
 			if (not p['da'] == 'none'):
 				algo_prefix = f"{algo_prefix}-da{p['da']}-cc{p['da_concistency_coef']}"
 		elif algo == "bcq":
-			assert p["agent_model"] in ["bcq", "bcqresnetbase"]
+			assert p["agent_model"] in ["bcq", "bcqresnetbase", "bcq_illustrative"]
 			algo_prefix = f"{algo_prefix}-t{p['bcq_threshold']}"
 			if p["agent_model"] == "bcqresnetbase":
 				algo_prefix = f"{algo_prefix}-res"
+			if (not p['da'] == 'none'):
+				algo_prefix = f"{algo_prefix}-da{p['da']}-cc{p['da_concistency_coef']}"
 		elif algo == "iql":
 			if p['algo'] == "iql":
 				algo_prefix = f"{algo_prefix}-t{p['iql_temperature']}-e{p['iql_expectile']}"

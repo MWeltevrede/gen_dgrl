@@ -24,12 +24,13 @@ def _create_agent(args, env, extra_config):
 	if agent_name == "bc_n":
 		return BehavioralCloningEnsemble(env.observation_space, env.action_space.n, args.lr, args.agent_model, ensemble_size=args.ensemble_size, hidden_size=args.hidden_size, channels=args.channels, normalize_obs=args.normalize_obs, activation=args.activation)
 	if agent_name == "bcq":
-		assert args.agent_model in ["bcq", "bcqresnetbase"]
+		assert args.agent_model in ["bcq", "bcqresnetbase", "bcq_illustrative"]
 		return BCQ(env.observation_space, 
 				   env.action_space.n, 
 				   args.lr, 
 				   args.agent_model, 
 				   args.hidden_size,
+				   channels=args.channels,
 				   gamma=args.gamma,
 				   target_update_freq=args.target_update_freq,
 				   tau=args.tau,
@@ -37,6 +38,10 @@ def _create_agent(args, env, extra_config):
 				   eps_end=args.eps_end,
 				   eps_decay=args.eps_decay,
 				   bcq_threshold=args.bcq_threshold,
+				   normalize_obs=args.normalize_obs, 
+				   activation=args.activation,
+				   da=args.da,
+				   da_concistency_coef=args.da_concistency_coef,
 				   perform_polyak_update=args.perform_polyak_update)
 	elif agent_name == "cql":
 		return CQL(env.observation_space, 

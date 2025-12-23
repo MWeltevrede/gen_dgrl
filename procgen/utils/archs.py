@@ -376,6 +376,51 @@ class BCQResnetBaseEncoder(NNBase):
 		i = F.relu(self.i1(c.reshape(-1, 2048)))
 		i = self.i2(i)
 		return self.q2(q), F.log_softmax(i, dim=1), i
+	
+
+class BCQIllustrativeEncoder(NNBase):
+	def __init__(self, observation_space, action_space, hidden_size=64, channels=[128, 64], use_actor_linear=True, normalize_obs=False, activation='relu'):
+		super().__init__(hidden_size)
+		flattened_dim = np.prod(observation_space.shape)
+		self.normalize_obs = normalize_obs
+		self.use_actor_linear = use_actor_linear
+		if activation == 'relu':
+			activation = nn.ReLU
+		elif activation == 'tanh':
+			activation = nn.Tanh
+		else:
+			activation = nn.ReLU
+
+		self.linears = []
+		self.linears.append(Flatten())
+		self.linears.append(nn.Linear(flattened_dim, channels[0]))
+		self.linears.append(activation())
+		for i in range(len(channels) - 1):
+			self.linears.append(nn.Linear(channels[i], channels[i + 1]))
+			self.linears.append(activation())
+		self.linears = nn.Sequential(*self.linears)
+
+		self.q = nn.Sequential(nn.Linear(channels[-1], hidden_size), activation())
+		self.i = nn.Sequential(nn.Linear(channels[-1], hidden_size), activation())
+
+		self.last_q = nn.Linear(hidden_size, action_space)
+		self.last_i = nn.Linear(hidden_size, action_space)
+
+	def get_last_latent(self, x):
+		if self.normalize_obs:
+			x = x / 255.
+		out = self.linears(x)
+		return out
+
+	def forward(self, x):
+		if self.normalize_obs:
+			x = x / 255.
+		out = self.linears(x)
+
+		q = self.last_q(self.q(out))
+		i = self.last_i(self.i(out))
+
+		return q, F.log_softmax(i, dim=1), i
 
 
 class IllustrativeEncoder(NNBase):
