@@ -19,7 +19,7 @@ import wandb
 from offline.agents import _create_agent
 from offline.arguments import parser
 from offline.dataloader import OfflineDataset, OfflineDTDataset
-from offline.test_offline_agent import eval_agent, eval_DT_agent
+from offline.test_procgen_agent import eval_agent, eval_DT_agent
 from utils.filewriter import FileWriter
 from utils.utils import set_seed
 from utils.early_stopper import EarlyStop
