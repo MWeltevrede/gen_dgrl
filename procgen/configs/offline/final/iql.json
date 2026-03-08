@@ -7,10 +7,10 @@
             1000000
         ],
         "env_name": [
-            "bigfish", "bossfight", "caveflyer", "chaser", "climber", "coinrun", "dodgeball", "fruitbot", "heist", "jumper", "leaper", "ninja", "maze", "miner", "plunder", "starpilot"
+            "bigfish"
         ],
         "dataset": [
-            "your_final_dataset_path"
+            "/datasets"
         ],
         "lr": [
             5e-4
@@ -25,7 +25,7 @@
             "pporesnetbase"
         ],
         "save_path": [
-            "your_final_checkpoint_path"
+            "/models"
         ],
         "resume": [
             true
@@ -73,22 +73,19 @@
 			false
 		],
 		"iql_critic_da":[
-			"none"
+			"consistency"
 		],
 		"iql_critic_concistency_coef":[
 			1
 		],
 		"iql_actor_da":[
-			"none"
+			"consistency_output"
 		],
 		"iql_actor_concistency_coef":[
 			1
 		], 
 		"augmentation_type":[
 			"identity"
-		],
-		"seed":[
-			0
 		]
     }
 }

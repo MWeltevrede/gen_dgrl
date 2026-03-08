@@ -87,7 +87,7 @@ def parse_args():
 	parser.add_argument(
 		"--module_name",
 		type=str,
-		choices=["offline.train_offline_agent", "online.trainer", "offline.single_level_train_offline_agent"],
+		choices=["offline.train_offline_agent", "online.trainer", "offline.single_level_train_offline_agent", "offline.train_multiple_offline_agents"],
 		default="offline.train_offline_agent",
 		help="Name of module to be used in the generated commands. "
 		+ "The result will be like 'python -m <MODULE_NAME> ...'",
