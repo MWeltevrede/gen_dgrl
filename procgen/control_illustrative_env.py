@@ -177,8 +177,8 @@ class ControlIllustrativeCMDP(gym.Env):
 			else:
 				#reward = 1 / 25.
 				reward = 1.0
-		#elif self.simple_r_function is False and distance_to_target < self.smallest_segment_dist:
-		elif self.simple_r_function is False:
+		elif self.simple_r_function is False and distance_to_target < self.smallest_segment_dist:
+		#elif self.simple_r_function is False:
 			#reward = (1. - (distance_to_target / 2.)) / (TIMEOUT_STEPS / 2.)
 			reward = (.5 - (distance_to_target)) / (TIMEOUT_STEPS / 2.)
 			self.smallest_segment_dist = distance_to_target
