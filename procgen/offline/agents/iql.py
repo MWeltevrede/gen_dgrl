@@ -15,8 +15,8 @@ from copy import deepcopy
 
 import wandb
 from online.behavior_policies.distributions import Categorical, Normal
+from utils.augmentations import rotate, identity, crop
 from utils import AGENT_CLASSES
-from utils.augmentations import rotate as augmentation
 from gym import spaces
 
 
@@ -454,6 +454,7 @@ class IQLEnsemble(IQL):
 		critic_concistency_coef,
 		actor_da,
 		actor_concistency_coef,
+		augmentation_type,
 		actor_soda_update_coef = 0.005,
 		avg_q = False,
 		extract_all_actions = False,
@@ -496,6 +497,12 @@ class IQLEnsemble(IQL):
 		del self.optimizer_q2
 		del self.model_actor
 		del self.optimizer_actor
+		if augmentation_type == 'rotate':
+			self.augmentation = rotate
+		elif augmentation_type == 'identity':
+			self.augmentation = identity
+		elif augmentation_type == 'crop':
+			self.augmentation = crop
 
 		if agent_model == 'illustrative':
 			self.model_actor = AGENT_CLASSES['illustrative_ensemble'](
@@ -503,8 +510,12 @@ class IQLEnsemble(IQL):
 			)
 			self.optimizer_actor = torch.optim.Adam(self.model_actor.parameters(), lr=self.lr)
 		else:
-			#TODO
-			assert False
+			assert actor_ensemble_size == 1, "Actor ensemble size > 1 is only supported for illustrative environment."
+			self.model_actor = AGENT_CLASSES[agent_model](
+				observation_space, self.action_space_actor, hidden_size, channels, use_actor_linear=True, normalize_obs=self.normalize_obs, activation=self.activation,
+			)
+			self.optimizer_actor = torch.optim.Adam(self.model_actor.parameters(), lr=self.lr)
+
 
 		self.model_qs = []
 		self.target_qs = []
@@ -609,13 +620,19 @@ class IQLEnsemble(IQL):
 	def train_step(self, observations, actions, rewards, next_observations, dones):
 		# 1. Calculate Value Loss
 		if "augment" in self.critic_da:
-			angles = [C4[random.randint(0, 3)] for _ in range(observations.shape[0])]
-			critic_observations = torch.concat([observations, augmentation(observations, angles)], dim=0)
+			if self.agent_model == 'illustrative':
+				angles = [C4[random.randint(0, 3)] for _ in range(observations.shape[0])]
+				critic_observations = torch.concat([observations, self.augmentation(observations, angles)], dim=0)
+			else:
+				critic_observations = torch.concat([observations, self.augmentation(observations)], dim=0)
 			critic_actions = torch.concat([actions, actions], dim=0)
 			critic_rewards = torch.concat([rewards, rewards], dim=0)
 			critic_dones = torch.concat([dones, dones], dim=0)
 			if self.critic_da == "augment_both":
-				critic_next_observations = torch.concat([next_observations, augmentation(next_observations, angles)], dim=0)
+				if self.agent_model == 'illustrative':
+					critic_next_observations = torch.concat([next_observations, self.augmentation(next_observations, angles)], dim=0)
+				else:
+					critic_next_observations = torch.concat([next_observations, self.augmentation(next_observations)], dim=0)
 			else:
 				critic_next_observations = torch.concat([next_observations, next_observations], dim=0)
 		else:
@@ -652,23 +669,32 @@ class IQLEnsemble(IQL):
 
 		value_concistency_loss = 0
 		if self.critic_da == "concistency":
-			angles = [C4[random.randint(0, 3)] for _ in range(critic_observations.shape[0])]
 			latent = self.model_v.get_last_latent(critic_observations)
-			augmented_latent = self.model_v.get_last_latent(augmentation(critic_observations, angles))
+			if self.agent_model == 'illustrative':
+				angles = [C4[random.randint(0, 3)] for _ in range(critic_observations.shape[0])]
+				augmented_latent = self.model_v.get_last_latent(self.augmentation(critic_observations, angles))
+			else:
+				augmented_latent = self.model_v.get_last_latent(self.augmentation(critic_observations))
 			value_concistency_loss = self.critic_concistency_coef * F.mse_loss(latent, augmented_latent).mean()
 			value_loss += value_concistency_loss
 			value_concistency_loss = value_concistency_loss.item()
 		elif self.critic_da == "concistency_output":
-			angles = [C4[random.randint(0, 3)] for _ in range(critic_observations.shape[0])]
 			latent = self.model_v(critic_observations)
-			augmented_latent = self.model_v(augmentation(critic_observations, angles))
+			if self.agent_model == 'illustrative':
+				angles = [C4[random.randint(0, 3)] for _ in range(critic_observations.shape[0])]
+				augmented_latent = self.model_v(self.augmentation(critic_observations, angles))
+			else:
+				augmented_latent = self.model_v(self.augmentation(critic_observations))
 			value_concistency_loss = self.critic_concistency_coef * F.mse_loss(latent, augmented_latent).mean()
 			value_loss += value_concistency_loss
 			value_concistency_loss = value_concistency_loss.item()
 		elif self.critic_da == "augment_concistency":
-			angles = [C4[random.randint(0, 3)] for _ in range(observations.shape[0])]
 			latent = self.model_v(observations)
-			augmented_latent = self.model_v(augmentation(observations, angles))
+			if self.agent_model == 'illustrative':
+				angles = [C4[random.randint(0, 3)] for _ in range(observations.shape[0])]
+				augmented_latent = self.model_v(self.augmentation(observations, angles))
+			else:
+				augmented_latent = self.model_v(self.augmentation(observations))
 			value_concistency_loss = self.critic_concistency_coef * F.mse_loss(latent, augmented_latent).mean()
 			value_loss += value_concistency_loss
 			value_concistency_loss = value_concistency_loss.item()
@@ -697,10 +723,10 @@ class IQLEnsemble(IQL):
 				angles = [C4[random.randint(0, 3)] for _ in range(critic_observations.shape[0])]
 				if self.continuous_actions:
 					latent = self.model_qs.get_last_latent(torch.concat([critic_observations, critic_actions], dim=-1))
-					augmented_latent = self.model_qs.get_last_latent(torch.concat([augmentation(critic_observations, angles), critic_actions], dim=-1))
+					augmented_latent = self.model_qs.get_last_latent(torch.concat([self.augmentation(critic_observations, angles), critic_actions], dim=-1))
 				else:
 					latent = self.model_qs.get_last_latent(critic_observations)
-					augmented_latent = self.model_qs.get_last_latent(augmentation(critic_observations, angles))
+					augmented_latent = self.model_qs.get_last_latent(self.augmentation(critic_observations, angles))
 				dims_to_mean_over = list(range(len(latent.shape)))[1:]
 				critic_concistency_loss = self.critic_concistency_coef * ((latent - augmented_latent) ** 2).mean(dim=dims_to_mean_over).sum(dim=0)	
 				critic_loss += critic_concistency_loss
@@ -709,10 +735,10 @@ class IQLEnsemble(IQL):
 				angles = [C4[random.randint(0, 3)] for _ in range(critic_observations.shape[0])]
 				if self.continuous_actions:
 					latent = self.model_qs(torch.concat([critic_observations, critic_actions], dim=-1))
-					augmented_latent = self.model_qs(torch.concat([augmentation(critic_observations, angles), critic_actions], dim=-1))
+					augmented_latent = self.model_qs(torch.concat([self.augmentation(critic_observations, angles), critic_actions], dim=-1))
 				else:
 					latent = self.model_qs(critic_observations)
-					augmented_latent = self.model_qs(augmentation(critic_observations, angles))
+					augmented_latent = self.model_qs(self.augmentation(critic_observations, angles))
 				dims_to_mean_over = list(range(len(latent.shape)))[1:]
 				critic_concistency_loss = self.critic_concistency_coef * ((latent - augmented_latent) ** 2).mean(dim=dims_to_mean_over).sum(dim=0)	
 				critic_loss += critic_concistency_loss
@@ -721,10 +747,10 @@ class IQLEnsemble(IQL):
 				angles = [C4[random.randint(0, 3)] for _ in range(observations.shape[0])]
 				if self.continuous_actions:
 					latent = self.model_qs(torch.concat([observations, actions], dim=-1))
-					augmented_latent = self.model_qs(torch.concat([augmentation(observations, angles), actions], dim=-1))
+					augmented_latent = self.model_qs(torch.concat([self.augmentation(observations, angles), actions], dim=-1))
 				else:
 					latent = self.model_qs(observations)
-					augmented_latent = self.model_qs(augmentation(observations))
+					augmented_latent = self.model_qs(self.augmentation(observations))
 				dims_to_mean_over = list(range(len(latent.shape)))[1:]
 				critic_concistency_loss = self.critic_concistency_coef * ((latent - augmented_latent) ** 2).mean(dim=dims_to_mean_over).sum(dim=0)	
 				critic_loss += critic_concistency_loss
@@ -745,35 +771,32 @@ class IQLEnsemble(IQL):
 
 				critic_concistency_loss = 0
 				if self.critic_da == "concistency":
-					angles = [C4[random.randint(0, 3)] for _ in range(critic_observations.shape[0])]
 					if self.continuous_actions:
 						latent = m.get_last_latent(torch.concat([critic_observations, critic_actions], dim=-1))
-						augmented_latent = m.get_last_latent(torch.concat([augmentation(critic_observations, angles), critic_actions], dim=-1))
+						augmented_latent = m.get_last_latent(torch.concat([self.augmentation(critic_observations), critic_actions], dim=-1))
 					else:
 						latent = m.get_last_latent(critic_observations)
-						augmented_latent = m.get_last_latent(augmentation(critic_observations, angles))
+						augmented_latent = m.get_last_latent(self.augmentation(critic_observations))
 					critic_concistency_loss = self.critic_concistency_coef * F.mse_loss(latent, augmented_latent).mean()	
 					critic_loss += critic_concistency_loss
 					critic_concistency_loss = critic_concistency_loss.item()
 				elif self.critic_da == "concistency_output":
-					angles = [C4[random.randint(0, 3)] for _ in range(critic_observations.shape[0])]
 					if self.continuous_actions:
 						latent = m(torch.concat([critic_observations, critic_actions], dim=-1))
-						augmented_latent = m(torch.concat([augmentation(critic_observations, angles), critic_actions], dim=-1))
+						augmented_latent = m(torch.concat([self.augmentation(critic_observations), critic_actions], dim=-1))
 					else:
 						latent = m(critic_observations)
-						augmented_latent = m(augmentation(critic_observations, angles))
+						augmented_latent = m(self.augmentation(critic_observations))
 					critic_concistency_loss = self.critic_concistency_coef * F.mse_loss(latent, augmented_latent).mean()	
 					critic_loss += critic_concistency_loss
 					critic_concistency_loss = critic_concistency_loss.item()
 				elif self.critic_da == "augment_concistency":
-					angles = [C4[random.randint(0, 3)] for _ in range(observations.shape[0])]
 					if self.continuous_actions:
 						latent = m(torch.concat([observations, actions], dim=-1))
-						augmented_latent = m(torch.concat([augmentation(observations, angles), actions], dim=-1))
+						augmented_latent = m(torch.concat([self.augmentation(observations), actions], dim=-1))
 					else:
 						latent = m(observations)
-						augmented_latent = m(augmentation(observations, angles))
+						augmented_latent = m(self.augmentation(observations))
 					critic_concistency_loss = self.critic_concistency_coef * F.mse_loss(latent, augmented_latent).mean()	
 					critic_loss += critic_concistency_loss
 					critic_concistency_loss = critic_concistency_loss.item()
@@ -807,8 +830,11 @@ class IQLEnsemble(IQL):
 			observations = observations.repeat(all_actions.shape[0], 1)
 			
 		if "augment" in self.actor_da:
-			angles = [C4[random.randint(0, 3)] for _ in range(observations.shape[0])]
-			actor_observations_a = torch.concat([observations, augmentation(observations, angles)], dim=0)
+			if self.agent_model == 'illustrative':
+				angles = [C4[random.randint(0, 3)] for _ in range(observations.shape[0])]
+				actor_observations_a = torch.concat([observations, self.augmentation(observations, angles)], dim=0)
+			else:
+				actor_observations_a = torch.concat([observations, self.augmentation(observations)], dim=0)
 			actor_actions_a = torch.concat([actions, actions], dim=0)
 			if self.actor_da == 'augment_both':
 				actor_observations_c = actor_observations_a
@@ -886,8 +912,10 @@ class IQLEnsemble(IQL):
 		exp_action = torch.min(exp_action, torch.tensor(100.0).to(exp_action.device))  # [batch_size, 1]
 		# _, action_log_prob = self.get_action(observations, return_log_probs=True)  # [batch_size, 1]
 
-
 		action_feats = self.model_actor(actor_observations_a)  # [actor_ensemble_size, batch_size, 2*action_dim] or [actor_ensemble_size, batch_size, n_actions]
+		if not self.agent_model == 'illustrative':
+			action_feats = action_feats.unsqueeze(0) 	# mimic ensemble of size 1
+		
 		#action_feats = torch.stack([m(actor_observations_a) for m in self.model_actor], dim=0)
 		action_dist = self.actor_dist(action_feats)	# [actor_ensemble_size, batch_size] number of dists
 		if self.continuous_actions:
@@ -900,9 +928,14 @@ class IQLEnsemble(IQL):
 
 		actor_concistency_loss = 0
 		if self.actor_da == "concistency":
-			angles = [C4[random.randint(0, 3)] for _ in range(actor_observations_a.shape[0])]
 			latent = self.model_actor.get_last_latent(actor_observations_a)
-			augmented_latent = self.model_actor.get_last_latent(augmentation(actor_observations_a, angles))
+			if self.agent_model == 'illustrative':
+				angles = [C4[random.randint(0, 3)] for _ in range(actor_observations_a.shape[0])]
+				augmented_latent = self.model_actor.get_last_latent(self.augmentation(actor_observations_a, angles))
+			else:
+				augmented_latent = self.model_actor.get_last_latent(self.augmentation(actor_observations_a))
+				latent = latent.unsqueeze(0) 	# mimic ensemble of size 1
+				augmented_latent = augmented_latent.unsqueeze(0) 	# mimic ensemble of size 1
 			dims_to_mean_over = list(range(len(latent.shape)))[1:]
 			actor_concistency_loss = self.actor_concistency_coef * ((latent - augmented_latent) ** 2).mean(dim=dims_to_mean_over).sum(dim=0)
 			actor_loss += actor_concistency_loss
@@ -910,23 +943,39 @@ class IQLEnsemble(IQL):
 		if self.actor_da == "augment_concistency":
 			angles = [C4[random.randint(0, 3)] for _ in range(observations.shape[0])]
 			output = self.model_actor(observations)
-			augmented_output = self.model_actor(augmentation(observations, angles))
+			if self.agent_model == 'illustrative':
+				angles = [C4[random.randint(0, 3)] for _ in range(observations.shape[0])]
+				augmented_output = self.model_actor(self.augmentation(observations, angles))
+			else:
+				augmented_output = self.model_actor(self.augmentation(observations))
+				output = output.unsqueeze(0) 	# mimic ensemble of size 1
+				augmented_output = augmented_output.unsqueeze(0) 	# mimic ensemble of size 1
 			dims_to_mean_over = list(range(len(output.shape)))[1:]
 			actor_concistency_loss = self.actor_concistency_coef * ((output - augmented_output) ** 2).mean(dim=dims_to_mean_over).sum(dim=0)
 			actor_loss += actor_concistency_loss
 			actor_concistency_loss = actor_concistency_loss.item()
 		elif self.actor_da == "concistency_output":
-			angles = [C4[random.randint(0, 3)] for _ in range(actor_observations_a.shape[0])]
 			output = self.model_actor(actor_observations_a)
-			augmented_output = self.model_actor(augmentation(actor_observations_a, angles))
+			if self.agent_model == 'illustrative':
+				angles = [C4[random.randint(0, 3)] for _ in range(actor_observations_a.shape[0])]
+				augmented_output = self.model_actor(self.augmentation(actor_observations_a, angles))
+			else:
+				augmented_output = self.model_actor(self.augmentation(actor_observations_a))
+				output = output.unsqueeze(0) 	# mimic ensemble of size 1
+				augmented_output = augmented_output.unsqueeze(0) 	# mimic ensemble of size 1
 			dims_to_mean_over = list(range(len(output.shape)))[1:]
 			actor_concistency_loss = self.actor_concistency_coef * ((output - augmented_output) ** 2).mean(dim=dims_to_mean_over).sum(dim=0)
 			actor_loss += actor_concistency_loss
 			actor_concistency_loss = actor_concistency_loss.item()
 		elif self.actor_da == "concistency_kl":
-			angles = [C4[random.randint(0, 3)] for _ in range(actor_observations_a.shape[0])]
 			output = self.actor_dist(self.model_actor(actor_observations_a))
-			augmented_output = self.actor_dist(self.model_actor(augmentation(actor_observations_a, angles)))
+			if self.agent_model == 'illustrative':
+				angles = [C4[random.randint(0, 3)] for _ in range(actor_observations_a.shape[0])]
+				augmented_output = self.actor_dist(self.model_actor(self.augmentation(actor_observations_a, angles)))
+			else:
+				augmented_output = self.actor_dist(self.model_actor(self.augmentation(actor_observations_a)))
+				output = output.unsqueeze(0) 	# mimic ensemble of size 1
+				augmented_output = augmented_output.unsqueeze(0) 	# mimic ensemble of size 1
 			actor_concistency_loss = self.actor_concistency_coef * (torch.distributions.kl.kl_divergence(output, augmented_output).sum(dim=(1,2)) / actor_observations_a.shape[0]).sum(dim=0)
 			actor_loss += actor_concistency_loss
 			actor_concistency_loss = actor_concistency_loss.item()
@@ -937,6 +986,9 @@ class IQLEnsemble(IQL):
 		#	augmented_output = self.soda_predictor(self.soda_projector(self.model_actor(augmentation(actor_observations_a, angles))))
 		#	output = F.normalize(output, dim=-1)
 		#	augmented_output = F.normalize(augmented_output, dim=-1)
+			#if not self.agent_model == 'illustrative':
+			#	output = output.unsqueeze(0) 	# mimic ensemble of size 1
+			#	augmented_output = augmented_output.unsqueeze(0) 	# mimic ensemble of size 1
 		#	actor_concistency_loss = self.actor_concistency_coef * F.mse_loss(augmented_output, output).mean()	
 		#	actor_loss += actor_concistency_loss
 		#	actor_concistency_loss = actor_concistency_loss.item()
@@ -1032,7 +1084,10 @@ class IQLEnsemble(IQL):
 		"""
 		deterministic = eps == 0.0
 		with torch.no_grad():
-			action_feats = self.model_actor(observations).mean(dim=0)
+			if self.agent_model == 'illustrative':
+				action_feats = self.model_actor(observations).mean(dim=0)
+			else:
+				action_feats = self.model_actor(observations)
 			#action_feats = self.model_actor(observations)[0]
 			#action_feats = self.model_actor[0](observations)
 			action_dist = self.actor_dist(action_feats)
@@ -1062,7 +1117,10 @@ class IQLEnsemble(IQL):
 		"""
 		deterministic = eps == 0.0
 
-		action_feats = self.model_actor(observations).mean(dim=0)  
+		if self.agent_model == 'illustrative':
+			action_feats = self.model_actor(observations).mean(dim=0)
+		else:
+			action_feats = self.model_actor(observations)
 		#action_feats = self.model_actor(observations)[0]
 		#action_feats = self.model_actor[0](observations)
 		action_dist = self.actor_dist(action_feats)

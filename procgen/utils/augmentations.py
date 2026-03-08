@@ -1,6 +1,15 @@
 import numpy as np
 import torch as th
 import math
+import kornia 
+
+def identity(batch):
+	return batch
+	
+def crop(batch):
+	aug_trans = th.nn.Sequential(th.nn.ReplicationPad2d(12),
+							kornia.augmentation.RandomCrop((64, 64)))
+	return aug_trans(batch)
 
 def _rotation_matrix(angle, device):
 	theta = th.tensor((angle/180.) * math.pi, device=device)
@@ -16,29 +25,6 @@ C4_MATRICES = [
 
 C90_MATRICES = [_rotation_matrix(angle, th.device('cuda')) for angle in range(0, 360, 4)]
 
-#C4_MATRICES = [
-#	_rotation_matrix(0, th.device('cpu')), 
-#	_rotation_matrix(90, th.device('cpu')), 
-#	_rotation_matrix(180, th.device('cpu')), 
-#	_rotation_matrix(270, th.device('cpu')), 
-#]
-
-#def rotate(state, angle):
-#	shoulder_loc = state[:2]
-#	elbow_loc = state[2:4]
-#	hand_loc = state[4:6]
-#	vel_elbow = state[6:8]
-#	vel_hand = state[8:]
-
-#	# rotate state by angle
-#	rotated_shoulder_loc = np.dot(_rotation_matrix(angle), shoulder_loc)
-#	rotated_elbow_loc = np.dot(_rotation_matrix(angle), elbow_loc)
-#	rotated_hand_loc = np.dot(_rotation_matrix(angle), hand_loc)
-#	rotated_vel_elbow = np.dot(_rotation_matrix(angle), vel_elbow)
-#	rotated_vel_hand = np.dot(_rotation_matrix(angle), vel_hand)
-
-#	return np.array([*rotated_shoulder_loc, *rotated_elbow_loc, *rotated_hand_loc, *rotated_vel_elbow, *rotated_vel_hand], dtype=np.float32)
-
 def rotate(batch, angles):
 	if len(batch.shape) == 1:
 		batch = batch.unsqueeze(0)
@@ -48,24 +34,6 @@ def rotate(batch, angles):
 	hand_loc = batch[:, 4:6]
 	vel_elbow = batch[:, 6:8]
 	vel_hand = batch[:, 8:]
-
-	## rotate state by angle
-	#rotated_shoulder_loc = []
-	#rotated_elbow_loc = []
-	#rotated_hand_loc = []
-	#rotated_vel_elbow = []
-	#rotated_vel_hand = []
-	#for i, angle in enumerate(angles):
-	#	rotated_shoulder_loc.append(th.matmul(_rotation_matrix(angle, batch.device), shoulder_loc[i])) 
-	#	rotated_elbow_loc.append(th.matmul(_rotation_matrix(angle, batch.device), elbow_loc[i])) 
-	#	rotated_hand_loc.append(th.matmul(_rotation_matrix(angle, batch.device), hand_loc[i])) 
-	#	rotated_vel_elbow.append(th.matmul(_rotation_matrix(angle, batch.device), vel_elbow[i])) 
-	#	rotated_vel_hand.append(th.matmul(_rotation_matrix(angle, batch.device), vel_hand[i])) 
-	#rotated_shoulder_loc = th.stack(rotated_shoulder_loc, dim=0)
-	#rotated_elbow_loc = th.stack(rotated_elbow_loc, dim=0)
-	#rotated_hand_loc = th.stack(rotated_hand_loc, dim=0)
-	#rotated_vel_elbow = th.stack(rotated_vel_elbow, dim=0)
-	#rotated_vel_hand = th.stack(rotated_vel_hand, dim=0)
 
 	# rotate state by angle
 	vectorized_batch = th.stack([shoulder_loc, elbow_loc, hand_loc, vel_elbow, vel_hand], dim=0)	# [5, batch_size, 2]
@@ -77,8 +45,6 @@ def rotate(batch, angles):
 
 
 	return th.concatenate([rotated_vectorized_batch[0], rotated_vectorized_batch[1], rotated_vectorized_batch[2], rotated_vectorized_batch[3], rotated_vectorized_batch[4]], dim=-1)
-	#return th.concatenate([rotated_shoulder_loc, rotated_elbow_loc, rotated_hand_loc, rotated_vel_elbow, rotated_vel_hand], dim=-1)
-
 
 
 def rotate_c90(obs):

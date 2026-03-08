@@ -166,6 +166,7 @@ def xpid_from_params(p, prefix="", algo="", is_single=False):
 					algo_prefix = f"{algo_prefix}-t{p['iql_temperature']}-e{p['iql_expectile']}-cs{p['iql_value_ensemble_size']}-as{p['iql_actor_ensemble_size']}-uv{p['iql_use_value']}"
 				else:
 					algo_prefix = f"{algo_prefix}-t{p['iql_temperature']}-e{p['iql_expectile']}-cs{p['iql_value_ensemble_size']}-as{p['iql_actor_ensemble_size']}-uv{p['iql_use_value']}-cda{p['iql_critic_da']}-ccc{p['iql_critic_concistency_coef']}-ada{p['iql_actor_da']}-acc{p['iql_actor_concistency_coef']}"
+			algo_prefix = f"{algo_prefix}-aug{p['augmentation_type']}"
 		elif algo in ["dt", "bct"]:
 			algo_prefix = f"{algo_prefix}-cl{p['dt_context_length']}-er{p['dt_eval_ret']}"
 	elif algo == "ppo":

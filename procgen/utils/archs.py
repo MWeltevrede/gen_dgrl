@@ -259,6 +259,18 @@ class PPOResNetBaseEncoder(NNBase):
 		layers.append(BasicBlock(out_channels))
 
 		return nn.Sequential(*layers)
+	
+	def get_last_latent(self, inputs):
+		x = inputs
+
+		x = self.layer1(x)
+		x = self.layer2(x)
+		x = self.layer3(x)
+
+		x = self.relu(self.flatten(x))
+		x = self.relu(self.fc(x))
+		
+		return x
 
 	def forward(self, inputs):
 		x = inputs

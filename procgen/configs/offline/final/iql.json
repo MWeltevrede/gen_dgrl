@@ -1,7 +1,7 @@
 {
     "grid": {
         "algo": [
-            "iql"
+            "iql_ensemble"
         ],
         "dataset_size": [
             1000000
@@ -56,6 +56,39 @@
         ],
         "early_stop": [
             true
-        ]
+        ],
+		"iql_value_ensemble_size":[
+			2
+		],
+		"iql_actor_ensemble_size":[
+			1
+		],
+		"iql_use_value":[
+			true
+		],
+		"iql_avg_q": [
+			false
+		],
+		"iql_extract_all_actions": [
+			false
+		],
+		"iql_critic_da":[
+			"none"
+		],
+		"iql_critic_concistency_coef":[
+			1
+		],
+		"iql_actor_da":[
+			"none"
+		],
+		"iql_actor_concistency_coef":[
+			1
+		], 
+		"augmentation_type":[
+			"identity"
+		],
+		"seed":[
+			0
+		]
     }
 }

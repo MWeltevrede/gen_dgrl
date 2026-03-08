@@ -14,6 +14,7 @@ parser.add_argument("--percentile", type=float, default=1.0, help="percentile fo
 parser.add_argument("--dataset_size", type=int, default=1000000, help="Size of dataset")
 parser.add_argument("--early_stop", type=str2bool, default=False, help="Use early stopping")
 parser.add_argument("--wandb_tags", type=str, nargs='+', default=None, help="wandb tags")
+parser.add_argument("--augmentation_type", type=str, default="rotate", choices=["rotate", "identity", "crop"], help="Augmentation style to use")
 
 # Model
 parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate")

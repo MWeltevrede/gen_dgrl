@@ -107,7 +107,8 @@ def _create_agent(args, env, extra_config):
 				   actor_da=args.iql_actor_da,
 				   actor_concistency_coef=args.iql_actor_concistency_coef,
 				   avg_q=args.iql_avg_q,
-				   extract_all_actions=args.iql_extract_all_actions, )
+				   extract_all_actions=args.iql_extract_all_actions, 
+				   augmentation_type=args.augmentation_type)
 	elif agent_name in ["dt", "bct"]:
 		return DecisionTransformer(env.observation_space,
 								   env.action_space.n, 
