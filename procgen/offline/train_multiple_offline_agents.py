@@ -120,7 +120,7 @@ for i, id in enumerate(args.agent_ids):
             print("Starting from scratch!")
 
         if args.early_stop:
-            early_stopper = EarlyStop(wait_epochs=10, min_delta=0.1)
+            early_stopper = EarlyStop(wait_epochs=args.early_stop_wait, min_delta=0.1)
 
         # Train agent
         for epoch in range(curr_epochs, args.epochs):
@@ -206,6 +206,7 @@ for i, id in enumerate(args.agent_ids):
                         start_level=args.num_levels,
                         distribution_mode=args.distribution_mode,
                         eval_eps=args.eval_eps,
+                        num_episodes=args.num_eval_eps
                     )
                     train_mean_perf = eval_agent(
                         agent,
@@ -239,7 +240,7 @@ for i, id in enumerate(args.agent_ids):
                     log_stats(stats_dict)
                         
                 if args.early_stop:
-                    if early_stopper.should_stop(epoch, val_mean_perf):
+                    if early_stopper.should_stop(epoch, val_mean_perf, agent, curr_epochs, args.save_path, args.env_name, xpid):
                         print("[DEBUG]: Early stopping")             
                         break
 
@@ -258,12 +259,12 @@ for i, id in enumerate(args.agent_ids):
                 agent, eval_max_return, device, env_name=args.env_name, num_levels=50, start_level=args.num_levels, distribution_mode=args.distribution_mode
             )
         else:
-            test_mean_perf = eval_agent(agent, device, env_name=args.env_name, start_level=args.num_levels+50, distribution_mode=args.distribution_mode, eval_eps=args.eval_eps)
+            test_mean_perf = eval_agent(agent, device, env_name=args.env_name, start_level=args.num_levels+50, distribution_mode=args.distribution_mode, eval_eps=args.eval_eps, num_episodes=args.num_eval_eps)
             train_mean_perf = eval_agent(
-                agent, device, env_name=args.env_name, num_levels=args.num_levels, start_level=0, distribution_mode=args.distribution_mode, eval_eps=args.eval_eps
+                agent, device, env_name=args.env_name, num_levels=args.num_levels, start_level=0, distribution_mode=args.distribution_mode, eval_eps=args.eval_eps, num_episodes=args.num_eval_eps
             )
             val_mean_perf = eval_agent(
-                agent, device, env_name=args.env_name, num_levels=50, start_level=args.num_levels, distribution_mode=args.distribution_mode
+                agent, device, env_name=args.env_name, num_levels=50, start_level=args.num_levels, distribution_mode=args.distribution_mode, num_episodes=args.num_eval_eps
             )
         wandb.log({"final_test_ret": test_mean_perf, "final_train_ret": train_mean_perf, "final_val_ret": val_mean_perf}, step=(epoch + 1))
         filewriter.log_final_test_eval({
