@@ -458,6 +458,7 @@ class IQLEnsemble(IQL):
 		actor_soda_update_coef = 0.005,
 		avg_q = False,
 		extract_all_actions = False,
+		detach_original = False,
 	):
 		super().__init__(
 			observation_space=observation_space,
@@ -489,6 +490,7 @@ class IQLEnsemble(IQL):
 		self.actor_da = actor_da
 		self.actor_concistency_coef = actor_concistency_coef
 		self.actor_soda_update_coef = actor_soda_update_coef
+		self.detach_original = detach_original
 		del self.model_q1
 		del self.target_q1
 		del self.optimizer_q1
@@ -679,6 +681,8 @@ class IQLEnsemble(IQL):
 				augmented_latent = self.model_v.get_last_latent(self.augmentation(critic_observations, angles))
 			else:
 				augmented_latent = self.model_v.get_last_latent(self.augmentation(critic_observations.clone()))
+			if self.detach_original:
+				latent = latent.detach()
 			value_concistency_loss = self.critic_concistency_coef * F.mse_loss(latent, augmented_latent).mean()
 			value_loss += value_concistency_loss
 			value_concistency_loss = value_concistency_loss.item()
@@ -689,6 +693,8 @@ class IQLEnsemble(IQL):
 				augmented_latent = self.model_v(self.augmentation(critic_observations, angles))
 			else:
 				augmented_latent = self.model_v(self.augmentation(critic_observations.clone()))
+			if self.detach_original:
+				latent = latent.detach()
 			value_concistency_loss = self.critic_concistency_coef * F.mse_loss(latent, augmented_latent).mean()
 			value_loss += value_concistency_loss
 			value_concistency_loss = value_concistency_loss.item()
@@ -699,6 +705,8 @@ class IQLEnsemble(IQL):
 				augmented_latent = self.model_v(self.augmentation(observations, angles))
 			else:
 				augmented_latent = self.model_v(self.augmentation(observations.clone()))
+			if self.detach_original:
+				latent = latent.detach()
 			value_concistency_loss = self.critic_concistency_coef * F.mse_loss(latent, augmented_latent).mean()
 			value_loss += value_concistency_loss
 			value_concistency_loss = value_concistency_loss.item()
@@ -731,6 +739,8 @@ class IQLEnsemble(IQL):
 				else:
 					latent = self.model_qs.get_last_latent(critic_observations)
 					augmented_latent = self.model_qs.get_last_latent(self.augmentation(critic_observations, angles))
+				if self.detach_original:
+					latent = latent.detach()
 				dims_to_mean_over = list(range(len(latent.shape)))[1:]
 				critic_concistency_loss = self.critic_concistency_coef * ((latent - augmented_latent) ** 2).mean(dim=dims_to_mean_over).sum(dim=0)	
 				critic_loss += critic_concistency_loss
@@ -743,6 +753,8 @@ class IQLEnsemble(IQL):
 				else:
 					latent = self.model_qs(critic_observations)
 					augmented_latent = self.model_qs(self.augmentation(critic_observations, angles))
+				if self.detach_original:
+					latent = latent.detach()
 				dims_to_mean_over = list(range(len(latent.shape)))[1:]
 				critic_concistency_loss = self.critic_concistency_coef * ((latent - augmented_latent) ** 2).mean(dim=dims_to_mean_over).sum(dim=0)	
 				critic_loss += critic_concistency_loss
@@ -755,6 +767,8 @@ class IQLEnsemble(IQL):
 				else:
 					latent = self.model_qs(observations)
 					augmented_latent = self.model_qs(self.augmentation(observations.clone()))
+				if self.detach_original:
+					latent = latent.detach()
 				dims_to_mean_over = list(range(len(latent.shape)))[1:]
 				critic_concistency_loss = self.critic_concistency_coef * ((latent - augmented_latent) ** 2).mean(dim=dims_to_mean_over).sum(dim=0)	
 				critic_loss += critic_concistency_loss
@@ -781,6 +795,8 @@ class IQLEnsemble(IQL):
 					else:
 						latent = m.get_last_latent(critic_observations)
 						augmented_latent = m.get_last_latent(self.augmentation(critic_observations.clone()))
+					if self.detach_original:
+						latent = latent.detach()
 					critic_concistency_loss = self.critic_concistency_coef * F.mse_loss(latent, augmented_latent).mean()	
 					critic_loss += critic_concistency_loss
 					critic_concistency_loss = critic_concistency_loss.item()
@@ -791,6 +807,8 @@ class IQLEnsemble(IQL):
 					else:
 						latent = m(critic_observations)
 						augmented_latent = m(self.augmentation(critic_observations.clone()))
+					if self.detach_original:
+						latent = latent.detach()
 					critic_concistency_loss = self.critic_concistency_coef * F.mse_loss(latent, augmented_latent).mean()	
 					critic_loss += critic_concistency_loss
 					critic_concistency_loss = critic_concistency_loss.item()
@@ -801,6 +819,8 @@ class IQLEnsemble(IQL):
 					else:
 						latent = m(observations)
 						augmented_latent = m(self.augmentation(observations.clone()))
+					if self.detach_original:
+						latent = latent.detach()
 					critic_concistency_loss = self.critic_concistency_coef * F.mse_loss(latent, augmented_latent).mean()	
 					critic_loss += critic_concistency_loss
 					critic_concistency_loss = critic_concistency_loss.item()
@@ -940,6 +960,8 @@ class IQLEnsemble(IQL):
 				augmented_latent = self.model_actor.get_last_latent(self.augmentation(actor_observations_a.clone()))
 				latent = latent.unsqueeze(0) 	# mimic ensemble of size 1
 				augmented_latent = augmented_latent.unsqueeze(0) 	# mimic ensemble of size 1
+			if self.detach_original:
+				latent = latent.detach()
 			dims_to_mean_over = list(range(len(latent.shape)))[1:]
 			actor_concistency_loss = self.actor_concistency_coef * ((latent - augmented_latent) ** 2).mean(dim=dims_to_mean_over).sum(dim=0)
 			actor_loss += actor_concistency_loss
@@ -954,6 +976,8 @@ class IQLEnsemble(IQL):
 				augmented_output = self.model_actor(self.augmentation(observations.clone()))
 				output = output.unsqueeze(0) 	# mimic ensemble of size 1
 				augmented_output = augmented_output.unsqueeze(0) 	# mimic ensemble of size 1
+			if self.detach_original:
+				output = output.detach()
 			dims_to_mean_over = list(range(len(output.shape)))[1:]
 			actor_concistency_loss = self.actor_concistency_coef * ((output - augmented_output) ** 2).mean(dim=dims_to_mean_over).sum(dim=0)
 			actor_loss += actor_concistency_loss
@@ -967,6 +991,8 @@ class IQLEnsemble(IQL):
 				augmented_output = self.model_actor(self.augmentation(actor_observations_a.clone()))
 				output = output.unsqueeze(0) 	# mimic ensemble of size 1
 				augmented_output = augmented_output.unsqueeze(0) 	# mimic ensemble of size 1
+			if self.detach_original:
+				output = output.detach()
 			dims_to_mean_over = list(range(len(output.shape)))[1:]
 			actor_concistency_loss = self.actor_concistency_coef * ((output - augmented_output) ** 2).mean(dim=dims_to_mean_over).sum(dim=0)
 			actor_loss += actor_concistency_loss
@@ -980,6 +1006,8 @@ class IQLEnsemble(IQL):
 				augmented_output = self.actor_dist(self.model_actor(self.augmentation(actor_observations_a).clone()))
 				output = output.unsqueeze(0) 	# mimic ensemble of size 1
 				augmented_output = augmented_output.unsqueeze(0) 	# mimic ensemble of size 1
+			if self.detach_original:
+				output = output.detach()
 			actor_concistency_loss = self.actor_concistency_coef * (torch.distributions.kl.kl_divergence(output, augmented_output).sum(dim=(1,2)) / actor_observations_a.shape[0]).sum(dim=0)
 			actor_loss += actor_concistency_loss
 			actor_concistency_loss = actor_concistency_loss.item()
