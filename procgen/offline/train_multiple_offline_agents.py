@@ -264,7 +264,7 @@ for i, id in enumerate(args.agent_ids):
                 agent, device, env_name=args.env_name, num_levels=args.num_levels, start_level=0, distribution_mode=args.distribution_mode, eval_eps=args.eval_eps, num_episodes=args.num_eval_eps
             )
             val_mean_perf = eval_agent(
-                agent, device, env_name=args.env_name, num_levels=50, start_level=args.num_levels, distribution_mode=args.distribution_mode, num_episodes=args.num_eval_eps
+                agent, device, env_name=args.env_name, num_levels=50, start_level=args.num_levels, distribution_mode=args.distribution_mode, eval_eps=args.eval_eps, num_episodes=args.num_eval_eps
             )
         wandb.log({"final_test_ret": test_mean_perf, "final_train_ret": train_mean_perf, "final_val_ret": val_mean_perf}, step=(epoch + 1))
         filewriter.log_final_test_eval({
