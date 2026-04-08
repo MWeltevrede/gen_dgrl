@@ -766,7 +766,7 @@ class IQLEnsemble(IQL):
 					augmented_latent = self.model_qs(torch.concat([self.augmentation(observations, angles), actions], dim=-1))
 				else:
 					latent = self.model_qs(observations)
-					augmented_latent = self.model_qs(self.augmentation(observations.clone()))
+					augmented_latent = self.model_qs(self.augmentation(observations, angles))
 				if self.detach_original:
 					latent = latent.detach()
 				dims_to_mean_over = list(range(len(latent.shape)))[1:]
@@ -967,7 +967,6 @@ class IQLEnsemble(IQL):
 			actor_loss += actor_concistency_loss
 			actor_concistency_loss = actor_concistency_loss.item()
 		if self.actor_da == "augment_concistency":
-			angles = [C4[random.randint(0, 3)] for _ in range(observations.shape[0])]
 			output = self.model_actor(observations)
 			if self.agent_model == 'illustrative':
 				angles = [C4[random.randint(0, 3)] for _ in range(observations.shape[0])]
