@@ -229,10 +229,11 @@ class PPOResNetBaseEncoder(NNBase):
 	Residual Network from PPO implementation -> 1M parameters
 	"""
 
-	def __init__(self, observation_space, action_space=15, hidden_size=256, channels=[16, 32, 32], normalize_obs=True, activation='relu', use_actor_linear=True):
+	def __init__(self, observation_space, action_space=15, hidden_size=256, channels=[16, 32, 32], normalize_obs=False, activation='relu', use_actor_linear=True):
 		super(PPOResNetBaseEncoder, self).__init__(hidden_size)
 		self.observation_space = observation_space
 		self.use_actor_linear = use_actor_linear
+		self.normalize_obs = normalize_obs
 
 		self.layer1 = self._make_layer(observation_space.shape[-1], channels[0])
 		self.layer2 = self._make_layer(channels[0], channels[1])
@@ -261,7 +262,10 @@ class PPOResNetBaseEncoder(NNBase):
 		return nn.Sequential(*layers)
 	
 	def get_last_latent(self, inputs):
-		x = inputs
+		if self.normalize_obs:
+			x = inputs / 255.
+		else:
+			x = inputs
 
 		x = self.layer1(x)
 		x = self.layer2(x)
@@ -273,7 +277,10 @@ class PPOResNetBaseEncoder(NNBase):
 		return x
 
 	def forward(self, inputs):
-		x = inputs
+		if self.normalize_obs:
+			x = inputs / 255.
+		else:
+			x = inputs
 
 		x = self.layer1(x)
 		x = self.layer2(x)
