@@ -32,6 +32,9 @@ class FixedCategorical(torch.distributions.Categorical):
 	def _get_logits(self):
 		return self.logits
 	
+	def _get_probs(self):
+		return self.probs
+	
 	def _get_log_softmax(self):
 		log_probs = F.log_softmax(self.logits, dim=1)
 		return log_probs

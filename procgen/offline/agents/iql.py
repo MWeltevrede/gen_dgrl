@@ -459,6 +459,7 @@ class IQLEnsemble(IQL):
 		avg_q = False,
 		extract_all_actions = False,
 		detach_original = False,
+		consistency_probs = False
 	):
 		super().__init__(
 			observation_space=observation_space,
@@ -491,6 +492,7 @@ class IQLEnsemble(IQL):
 		self.actor_concistency_coef = actor_concistency_coef
 		self.actor_soda_update_coef = actor_soda_update_coef
 		self.detach_original = detach_original
+		self.consistency_probs = consistency_probs
 		del self.model_q1
 		del self.target_q1
 		del self.optimizer_q1
@@ -968,13 +970,19 @@ class IQLEnsemble(IQL):
 			actor_concistency_loss = actor_concistency_loss.item()
 		if self.actor_da == "augment_concistency":
 			output = self.model_actor(observations)
+			if self.consistency_probs:
+				output = self.actor_dist(output)._get_probs()
 			if self.agent_model == 'illustrative':
 				angles = [C4[random.randint(0, 3)] for _ in range(observations.shape[0])]
 				augmented_output = self.model_actor(self.augmentation(observations, angles))
+				if self.consistency_probs:
+					augmented_output = self.actor_dist(augmented_output)._get_probs()
 			else:
 				augmented_output = self.model_actor(self.augmentation(observations.clone()))
 				output = output.unsqueeze(0) 	# mimic ensemble of size 1
 				augmented_output = augmented_output.unsqueeze(0) 	# mimic ensemble of size 1
+				if self.consistency_probs:
+					augmented_output = self.actor_dist(augmented_output)._get_probs()
 			if self.detach_original:
 				output = output.detach()
 			dims_to_mean_over = list(range(len(output.shape)))[1:]
@@ -983,13 +991,19 @@ class IQLEnsemble(IQL):
 			actor_concistency_loss = actor_concistency_loss.item()
 		elif self.actor_da == "concistency_output":
 			output = self.model_actor(actor_observations_a)
+			if self.consistency_probs:
+				output = self.actor_dist(output)._get_probs()
 			if self.agent_model == 'illustrative':
 				angles = [C4[random.randint(0, 3)] for _ in range(actor_observations_a.shape[0])]
 				augmented_output = self.model_actor(self.augmentation(actor_observations_a, angles))
+				if self.consistency_probs:
+					augmented_output = self.actor_dist(augmented_output)._get_probs()
 			else:
 				augmented_output = self.model_actor(self.augmentation(actor_observations_a.clone()))
 				output = output.unsqueeze(0) 	# mimic ensemble of size 1
 				augmented_output = augmented_output.unsqueeze(0) 	# mimic ensemble of size 1
+				if self.consistency_probs:
+					augmented_output = self.actor_dist(augmented_output)._get_probs()
 			if self.detach_original:
 				output = output.detach()
 			dims_to_mean_over = list(range(len(output.shape)))[1:]

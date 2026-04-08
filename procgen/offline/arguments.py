@@ -74,6 +74,7 @@ parser.add_argument("--iql_critic_concistency_coef", type=float, default=10, hel
 parser.add_argument("--iql_actor_da", type=str, default="none", choices=["augment_online", "augment_both", "concistency", "augment_concistency", "concistency_output", "concistency_kl", "concistency_soda", "none"], help="How to apply Data Augmentation (DA) to the policy")
 parser.add_argument("--iql_actor_concistency_coef", type=float, default=10, help="IQL actor data augmentation concistency coefficient")
 parser.add_argument("--iql_detach_original", type=str2bool, default=False, help="Whether to detach the original branch of the concistency loss")
+parser.add_argument("--consistency_probs", type=str2bool, default=False, help="Whether to apply DAC to probs or logits")
 
 # DT
 parser.add_argument("--dt_context_length", type=int, default=128, help="context length for the agent")
