@@ -79,8 +79,9 @@ def _create_agent(args, env, extra_config):
 				   iql_temperature=args.iql_temperature,
 				   iql_expectile=args.iql_expectile,
 				   perform_polyak_update=args.perform_polyak_update,
-				   normalize_obs=args.normalize_obs, 
-				   activation=args.activation)
+				   normalize_obs=args.normalize_obs,
+				   activation=args.activation,
+				   grad_norm_clip=args.grad_norm_clip)
 	elif agent_name == "iql_ensemble":
 		return IQLEnsemble(env.observation_space, 
 				   env.action_space, 
@@ -97,8 +98,9 @@ def _create_agent(args, env, extra_config):
 				   iql_temperature=args.iql_temperature,
 				   iql_expectile=args.iql_expectile,
 				   perform_polyak_update=args.perform_polyak_update,
-				   normalize_obs=args.normalize_obs, 
+				   normalize_obs=args.normalize_obs,
 				   activation=args.activation,
+				   grad_norm_clip=args.grad_norm_clip,
 				   value_ensemble_size=args.iql_value_ensemble_size,
 				   actor_ensemble_size=args.iql_actor_ensemble_size,
 				   use_value=args.iql_use_value,

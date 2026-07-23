@@ -37,9 +37,10 @@ class IQL:
 		eps_decay,
 		iql_temperature,
 		iql_expectile,
-		perform_polyak_update, 
+		perform_polyak_update,
 		normalize_obs,
 		activation,
+		grad_norm_clip,
 	):
 		"""
 		Initialize the agent.
@@ -56,6 +57,7 @@ class IQL:
 		:param eps_decay: the decay rate for epsilon
 		:param iql_temperature: the temperature for the IQL agent
 		:param iql_expectile: the expectile weight for the IQL agent
+		:param grad_norm_clip: the gradient norm clip applied before each optimizer step
 		"""
 
 		# Implement Implicit Q Learning, which has an Actor, Critic and Q Function
@@ -68,6 +70,7 @@ class IQL:
 		self.agent_model = agent_model
 		self.channels = channels
 		self.normalize_obs = normalize_obs
+		self.grad_norm_clip = grad_norm_clip
 		self.activation = activation
 
 		self.total_steps = 0
@@ -198,6 +201,7 @@ class IQL:
 		value_loss = self.expectile_loss(u_diff, self.iql_expectile)  # [1]
 		self.optimizer_v.zero_grad(set_to_none=True)
 		value_loss.backward()
+		torch.nn.utils.clip_grad_norm_(self.model_v.parameters(), self.grad_norm_clip)
 		self.optimizer_v.step()
 
 		# 2. Calculate Critic Loss
@@ -213,11 +217,13 @@ class IQL:
 		critic1_loss = F.mse_loss(curr_q1, target_q).mean()  # [1]
 		self.optimizer_q1.zero_grad(set_to_none=True)
 		critic1_loss.backward()
+		torch.nn.utils.clip_grad_norm_(self.model_q1.parameters(), self.grad_norm_clip)
 		self.optimizer_q1.step()
 
 		critic2_loss = F.mse_loss(curr_q2, target_q).mean()  # [1]
 		self.optimizer_q2.zero_grad(set_to_none=True)
 		critic2_loss.backward()
+		torch.nn.utils.clip_grad_norm_(self.model_q2.parameters(), self.grad_norm_clip)
 		self.optimizer_q2.step()
 		
 		# Update the target network, copying all weights and biases in DQN
@@ -245,6 +251,7 @@ class IQL:
 		actor_loss = -(exp_action * action_log_prob).mean()  # [1]
 		self.optimizer_actor.zero_grad(set_to_none=True)
 		actor_loss.backward()
+		torch.nn.utils.clip_grad_norm_(self.model_actor.parameters(), self.grad_norm_clip)
 		self.optimizer_actor.step()
 
 		self.total_steps += 1
@@ -288,6 +295,7 @@ class IQL:
 		actor_loss = -(exp_action * action_log_prob).mean()  # [1]
 		self.optimizer_actor.zero_grad(set_to_none=True)
 		actor_loss.backward()
+		torch.nn.utils.clip_grad_norm_(self.model_actor.parameters(), self.grad_norm_clip)
 		self.optimizer_actor.step()
 
 		self.total_steps += 1
@@ -444,9 +452,10 @@ class IQLEnsemble(IQL):
 		eps_decay,
 		iql_temperature,
 		iql_expectile,
-		perform_polyak_update, 
+		perform_polyak_update,
 		normalize_obs,
 		activation,
+		grad_norm_clip,
 		value_ensemble_size,
 		actor_ensemble_size,
 		use_value,
@@ -479,6 +488,7 @@ class IQLEnsemble(IQL):
 			perform_polyak_update=perform_polyak_update,
 			normalize_obs=normalize_obs,
 			activation=activation,
+			grad_norm_clip=grad_norm_clip,
 		)
 		self.value_ensemble_size = value_ensemble_size
 		self.actor_ensemble_size = actor_ensemble_size
@@ -715,6 +725,7 @@ class IQLEnsemble(IQL):
 
 		self.optimizer_v.zero_grad(set_to_none=True)
 		value_loss.backward()
+		torch.nn.utils.clip_grad_norm_(self.model_v.parameters(), self.grad_norm_clip)
 		self.optimizer_v.step()
 
 		# 2. Calculate Critic Loss
@@ -778,6 +789,7 @@ class IQLEnsemble(IQL):
 
 			self.optimizer_qs.zero_grad(set_to_none=True)
 			critic_loss.backward()
+			torch.nn.utils.clip_grad_norm_(self.model_qs.parameters(), self.grad_norm_clip)
 			self.optimizer_qs.step()
 			avg_critic_loss = critic_loss.item() / self.value_ensemble_size
 		else:
@@ -829,6 +841,7 @@ class IQLEnsemble(IQL):
 
 				self.optimizer_qs[i].zero_grad(set_to_none=True)
 				critic_loss.backward()
+				torch.nn.utils.clip_grad_norm_(m.parameters(), self.grad_norm_clip)
 				self.optimizer_qs[i].step()
 				avg_critic_loss += critic_loss.item() / self.value_ensemble_size
 		
@@ -1011,17 +1024,25 @@ class IQLEnsemble(IQL):
 			actor_loss += actor_concistency_loss
 			actor_concistency_loss = actor_concistency_loss.item()
 		elif self.actor_da == "concistency_kl":
-			output = self.actor_dist(self.model_actor(actor_observations_a))
+			# One-sided consistency loss (cf. https://github.com/rraileanu/auto-drac): sample an action from
+			# the un-augmented policy (no gradient), then minimise its negative log-likelihood under the
+			# augmented policy. This is a cross-entropy estimator of KL(pi(.|s) || pi(.|aug(s))) that only
+			# ever updates the augmented branch -- the online branch is always treated as constant, regardless
+			# of self.detach_original.
+			with torch.no_grad():
+				action_feats = self.model_actor(actor_observations_a)
+				if not self.agent_model == 'illustrative':
+					action_feats = action_feats.unsqueeze(0) 	# mimic ensemble of size 1
+				sampled_action = self.actor_dist(action_feats).sample()
 			if self.agent_model == 'illustrative':
 				angles = [C4[random.randint(0, 3)] for _ in range(actor_observations_a.shape[0])]
-				augmented_output = self.actor_dist(self.model_actor(self.augmentation(actor_observations_a, angles)))
+				augmented_feats = self.model_actor(self.augmentation(actor_observations_a, angles))
 			else:
-				augmented_output = self.actor_dist(self.model_actor(self.augmentation(actor_observations_a).clone()))
-				output = output.unsqueeze(0) 	# mimic ensemble of size 1
-				augmented_output = augmented_output.unsqueeze(0) 	# mimic ensemble of size 1
-			if self.detach_original:
-				output = output.detach()
-			actor_concistency_loss = self.actor_concistency_coef * (torch.distributions.kl.kl_divergence(output, augmented_output).sum(dim=(1,2)) / actor_observations_a.shape[0]).sum(dim=0)
+				augmented_feats = self.model_actor(self.augmentation(actor_observations_a.clone()))
+				augmented_feats = augmented_feats.unsqueeze(0) 	# mimic ensemble of size 1
+			augmented_log_prob = self.actor_dist(augmented_feats).log_probs(sampled_action)
+			dims_to_mean_over = list(range(len(augmented_log_prob.shape)))[1:]
+			actor_concistency_loss = -self.actor_concistency_coef * augmented_log_prob.mean(dim=dims_to_mean_over).sum(dim=0)
 			actor_loss += actor_concistency_loss
 			actor_concistency_loss = actor_concistency_loss.item()
 		#elif self.actor_da == "concistency_soda":
@@ -1041,6 +1062,7 @@ class IQLEnsemble(IQL):
 		self.optimizer_actor.zero_grad(set_to_none=True)
 		#[o.zero_grad(set_to_none=True) for o in self.optimizer_actor]
 		actor_loss.backward()
+		torch.nn.utils.clip_grad_norm_(self.model_actor.parameters(), self.grad_norm_clip)
 		self.optimizer_actor.step()
 		#[o.step() for o in self.optimizer_actor]
 
